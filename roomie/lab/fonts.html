@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Headline fonts</title>
+<!-- a lab page only: the chosen font gets self-hosted in site/fonts, as the site rules require -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Gloock&family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Fredoka:wght@600&family=Golos+Text:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0e0f14; color: #f2f1ec; font: 500 17px/1.55 "Golos Text", system-ui, sans-serif; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 18px; padding: 24px; }
+  article { background: #15161d; border: 1px solid #272935; border-radius: 22px; padding: 30px 30px 26px; display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 18px; align-items: start; }
+  .tag { grid-column: 1 / -1; font-size: 13px; color: #aeb1bd; }
+  h1 { margin: 0; font-size: 52px; line-height: 1; }
+  h2 { margin: 18px 0 6px; font-size: 30px; line-height: 1.05; }
+  p { margin: 12px 0 0; color: #aeb1bd; font-size: 16px; max-width: 34ch; }
+  img { width: 150px; border-radius: 14px; }
+  .lilita { font-family: "Lilita One"; font-weight: 400; }
+  .serif { font-family: "Gloock"; font-weight: 400; letter-spacing: -.005em; }
+  .serif h1 { font-size: 54px; } .serif h2 { font-size: 32px; }
+  .brico { font-family: "Bricolage Grotesque"; font-weight: 700; letter-spacing: -.02em; }
+  .fred { font-family: "Fredoka"; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <article><div class="tag">A · Lilita One (now): chunky, playful</div>
+    <div class="lilita"><h1>Roomie lives in your menu bar.</h1><h2>Who moves in?</h2></div>
+    <img src="../../site/roomie/media/og.jpg" alt=""><p>A pair of eyes that keeps you company, and keeps an eye on you.</p></article>
+  <article><div class="tag">B · Gloock: well-mannered, a little theatrical (Madam and the Gentleman)</div>
+    <div class="serif"><h1>Roomie lives in your menu bar.</h1><h2>Who moves in?</h2></div>
+    <img src="../../site/roomie/media/og.jpg" alt=""><p>A pair of eyes that keeps you company, and keeps an eye on you.</p></article>
+  <article><div class="tag">C · Bricolage Grotesque: modern, with a quirk</div>
+    <div class="brico"><h1>Roomie lives in your menu bar.</h1><h2>Who moves in?</h2></div>
+    <img src="../../site/roomie/media/og.jpg" alt=""><p>A pair of eyes that keeps you company, and keeps an eye on you.</p></article>
+  <article><div class="tag">D · Fredoka: soft and round, friendly but grown-up</div>
+    <div class="fred"><h1>Roomie lives in your menu bar.</h1><h2>Who moves in?</h2></div>
+    <img src="../../site/roomie/media/og.jpg" alt=""><p>A pair of eyes that keeps you company, and keeps an eye on you.</p></article>
+</div>
+</body>
+</html>

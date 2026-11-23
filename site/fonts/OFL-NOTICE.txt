@@ -1,0 +1,4 @@
+Golos Text — Copyright The Golos Project Authors, SIL Open Font License 1.1.
+JetBrains Mono — Copyright The JetBrains Mono Project Authors, SIL Open Font License 1.1.
+Downloaded from Google Fonts (fonts.gstatic.com), cyrillic and latin subsets, variable weight.
+Lilita One — Copyright Juan Montoya, SIL Open Font License 1.1. From github.com/google/fonts (ofl/lilitaone).

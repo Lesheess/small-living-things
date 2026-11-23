@@ -1,0 +1,8 @@
+# private working notes and tool state
+CLAUDE.md
+.claude/
+.impeccable/
+roomie/LAUNCH.md
+# build output (the download lives in site/roomie/Roomie.zip)
+roomie/Roomie.app/
+.DS_Store

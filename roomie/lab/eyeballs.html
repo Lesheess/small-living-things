@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roomie eyes lab</title>
+<style>
+  html, body{ margin:0; height:100%; overflow:hidden; background:#e9ebef; font:600 14px/1.3 ui-rounded, -apple-system, system-ui, sans-serif; color:#2a2c33; }
+  canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; cursor:crosshair; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+/* =====================================================================
+   Roomie eyes, the way code is good at them (lab, 2026-11-19).
+   Not drawn eyes: eyeballs. A lit sphere with a wet highlight that stays
+   put while the iris rolls under it; the iris lies on the sphere, so it
+   foreshortens into an ellipse when he looks aside; fibres in the iris;
+   pupils that open when the pointer comes near; lids that are skin over
+   the ball and follow the gaze down; both eyes turn in toward a near
+   pointer. Character comes from shape and motion, no accessories:
+     MADAM      open lids tilted up at the outer corner, a big iris, quick
+                darting looks, now and then a double blink and a glance away
+     GENTLEMAN  heavy half-lowered lids, a smaller iris, slow dignified
+                looks (he only moves his eyes for something worth it), rare blinks
+   Everything here is circles, ellipses, gradients and clips, so it ports
+   one to one to Core Graphics in the Mac app.
+   ===================================================================== */
+const cv = document.getElementById("c"), g = cv.getContext("2d");
+let W = 0, H = 0, D = 1;
+function fit(){ D = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W*D; cv.height = H*D; }
+addEventListener("resize", fit); fit();
+const P = { x:W/2, y:H*.62, t:0 };
+addEventListener("pointermove", e => { P.x = e.clientX; P.y = e.clientY; P.t = performance.now(); });
+
+const CH = {
+  madam: { name:"Madam", iris:["#2a0d48", "#7c3fcc", "#c99bff", "#f4dcff"], irisR:.5, lid:["#f6e3ec", "#d8b3c7", "#a77f97"], edge:"#5a2a4e", liner:3.2,
+           rest:.1, tilt:.16, lower:.12, k:520, c:30, lazy:.035, blink:[1.8, 4.2], double:.35, wander:true },
+  gent:  { name:"Gentleman", iris:["#0b2430", "#256b7d", "#7cc7cf", "#d6f6f6"], irisR:.43, lid:["#e6e8ee", "#b3b8c5", "#7f8596"], edge:"#3d4250", liner:1.6,
+           rest:.36, tilt:-.06, lower:.06, k:190, c:21, lazy:.16, blink:[4, 7.5], double:0, wander:false },
+};
+function pair(who, size){ return { who, size, cx:0, cy:0, eyes:[0, 1].map(() => ({ a:0, b:0, va:0, vb:0, ta:0, tb:0 })),
+  pupil:.42, blinkAt:performance.now() + 1500, blinkT:-1, twice:false, wince:0, glance:null, glanceAt:performance.now() + 5000 }; }
+const pairs = [pair("madam", 1), pair("gent", 1), pair("madam", 0), pair("gent", 0), pair("madam", -1), pair("gent", -1)];
+
+/* ---------- one eye ----------
+   a, b: where it looks, as yaw and pitch in radians. right: the eye on the viewer's right. */
+function eye(cx, cy, R, ch, a, b, right, st, dark){
+  const s = right ? 1 : -1;
+  g.save(); g.translate(cx, cy);
+  /* the ball sits in the face: a soft shadow under it */
+  if(R > 30){ const sh = g.createRadialGradient(0, R*.18, R*.9, 0, R*.18, R*1.22); sh.addColorStop(0, "rgba(40,30,60,.22)"); sh.addColorStop(1, "rgba(40,30,60,0)");
+    g.fillStyle = sh; g.beginPath(); g.arc(0, R*.18, R*1.22, 0, 7); g.fill(); }
+  const squash = 1 - .05*st.close - .06*st.wince;
+  g.scale(1 + .03*st.wince, squash);
+  g.save(); g.beginPath(); g.arc(0, 0, R, 0, 7); g.clip();
+  /* the white: lit from the top left, darker toward the rim */
+  const wg = g.createRadialGradient(-R*.32, -R*.38, R*.1, 0, 0, R*1.02);
+  wg.addColorStop(0, "#fbfbfd"); wg.addColorStop(.55, "#e9ebf2"); wg.addColorStop(.88, "#c2c6d4"); wg.addColorStop(1, "#9ea3b5");
+  g.fillStyle = wg; g.fillRect(-R, -R, 2*R, 2*R);
+  /* the iris lies on the ball: its centre is where the gaze meets the sphere, and it flattens toward the edge */
+  const ix = Math.sin(a)*Math.cos(b)*R, iy = Math.sin(b)*R, tilt = Math.atan2(iy, ix), off = Math.min(.999, Math.hypot(ix, iy)/R), fore = Math.sqrt(1 - off*off);
+  const ri = R*ch.irisR;
+  g.save(); g.translate(ix, iy); g.rotate(tilt); g.scale(Math.max(.25, fore), 1); g.rotate(-tilt);
+  g.beginPath(); g.arc(0, 0, ri, 0, 7); g.save(); g.clip();
+  const ig = g.createRadialGradient(0, 0, ri*.2, 0, 0, ri);
+  ig.addColorStop(0, ch.iris[2]); ig.addColorStop(.55, ch.iris[1]); ig.addColorStop(.9, ch.iris[0]); ig.addColorStop(1, ch.iris[0]);
+  g.fillStyle = ig; g.fillRect(-ri, -ri, 2*ri, 2*ri);
+  /* fibres, from the pupil out */
+  if(R > 14){ g.lineCap = "round";
+    for(let k = 0; k < 64; k++){ const an = k/64*Math.PI*2 + (k % 3)*.03, r0 = ri*(.34 + (k % 4)*.03), r1 = ri*(.78 + (k % 5)*.03);
+      g.strokeStyle = k % 2 ? "rgba(255,255,255,.16)" : "rgba(0,0,0,.14)"; g.lineWidth = Math.max(.6, ri*.018);
+      g.beginPath(); g.moveTo(Math.cos(an)*r0, Math.sin(an)*r0); g.lineTo(Math.cos(an)*r1, Math.sin(an)*r1); g.stroke(); } }
+  /* the light that comes through the cornea and lands on the far side of the iris */
+  const cg = g.createRadialGradient(ri*.35, ri*.45, 0, ri*.35, ri*.45, ri*.75); cg.addColorStop(0, ch.iris[3]); cg.addColorStop(1, "rgba(255,255,255,0)");
+  g.globalAlpha = .75; g.fillStyle = cg; g.fillRect(-ri, -ri, 2*ri, 2*ri); g.globalAlpha = 1;
+  /* the pupil */
+  const pr = ri*st.pupil, pg = g.createRadialGradient(-pr*.2, -pr*.2, 0, 0, 0, pr); pg.addColorStop(0, "#121216"); pg.addColorStop(1, "#000");
+  g.fillStyle = pg; g.beginPath(); g.arc(0, 0, pr, 0, 7); g.fill();
+  g.restore();
+  g.strokeStyle = "rgba(0,0,0,.35)"; g.lineWidth = Math.max(.6, ri*.05); g.beginPath(); g.arc(0, 0, ri*.985, 0, 7); g.stroke();
+  g.restore();
+  /* the wet highlight stays where the light is, whatever the eye does */
+  /* lids: skin over the ball. The upper lid follows the gaze down, and closes in a blink */
+  const up = Math.min(1, ch.rest + Math.max(0, b)*.22 + st.close*(1 - ch.rest) + st.wince*.7 - Math.max(0, -b)*.12);
+  const low = Math.min(1, ch.lower + Math.max(0, -b)*.25 + st.wince*.3);
+  const yU = -R + up*2*R*.98 + (st.close > .98 ? R*.04 : 0), lean = s*ch.tilt*R, bow = R*.32*(1 - up*.6);
+  const yL = R - low*2*R*.5;
+  /* the upper lid's shadow on the ball */
+  const shg = g.createLinearGradient(0, yU, 0, yU + R*.45); shg.addColorStop(0, "rgba(30,20,50,.35)"); shg.addColorStop(1, "rgba(30,20,50,0)");
+  g.fillStyle = shg; g.fillRect(-R, yU - R*.1, 2*R, R*.6);
+  const lidPath = () => { g.beginPath(); g.moveTo(-R*1.1, -R*1.2); g.lineTo(R*1.1, -R*1.2); g.lineTo(R*1.1, yU - lean); g.quadraticCurveTo(0, yU + bow, -R*1.1, yU + lean); g.closePath(); };
+  const lg = g.createRadialGradient(-R*.32, -R*.42, R*.05, 0, 0, R*1.02); lg.addColorStop(0, ch.lid[0]); lg.addColorStop(.7, ch.lid[1]); lg.addColorStop(1, ch.lid[2]);
+  lidPath(); g.fillStyle = lg; g.fill();
+  if(R > 14){ g.save(); lidPath(); g.clip();
+    g.strokeStyle = "rgba(255,255,255,.5)"; g.lineWidth = R*.025; g.beginPath(); g.moveTo(R*1.1, yU - lean - R*.05); g.quadraticCurveTo(0, yU + bow - R*.05, -R*1.1, yU + lean - R*.05); g.stroke();
+    g.restore(); }
+  /* the lid's edge: a line that is thicker toward the outer corner */
+  g.lineCap = "round";
+  for(let k = 0; k < 6; k++){ const t0 = k/6, t1 = (k + 1)/6, q = (t) => { const x0 = -R*1.1, x1 = R*1.1, y0 = yU + lean, y1 = yU - lean, cx = 0, cy = yU + bow;
+      return [(1 - t)*(1 - t)*x0 + 2*(1 - t)*t*cx + t*t*x1, (1 - t)*(1 - t)*y0 + 2*(1 - t)*t*cy + t*t*y1]; };
+    const outer = right ? (t0 + t1)/2 : 1 - (t0 + t1)/2;
+    g.strokeStyle = ch.edge; g.lineWidth = Math.max(.8, R*.018*ch.liner*(.55 + outer*.9)); const [x0, y0] = q(t0), [x1, y1] = q(t1);
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); }
+  /* the lower lid */
+  if(low > .02){ const lg2 = g.createRadialGradient(-R*.32, -R*.42, R*.05, 0, 0, R*1.02); lg2.addColorStop(0, ch.lid[0]); lg2.addColorStop(.7, ch.lid[1]); lg2.addColorStop(1, ch.lid[2]);
+    g.beginPath(); g.moveTo(-R*1.1, R*1.2); g.lineTo(R*1.1, R*1.2); g.lineTo(R*1.1, yL); g.quadraticCurveTo(0, yL - R*.18, -R*1.1, yL); g.closePath(); g.fillStyle = lg2; g.fill();
+    g.strokeStyle = "rgba(0,0,0,.18)"; g.lineWidth = Math.max(.6, R*.02); g.beginPath(); g.moveTo(R*1.1, yL); g.quadraticCurveTo(0, yL - R*.18, -R*1.1, yL); g.stroke(); }
+  g.restore();
+  /* the wet highlight, on top, kept inside the open part of the eye */
+  if(st.close < .6){ g.save(); g.beginPath(); g.arc(0, 0, R*.97, 0, 7); g.clip();
+    g.beginPath(); g.rect(-R, yU + bow*.4 + R*.06, 2*R, Math.max(0, yL - (yU + bow*.4) - R*.12)); g.clip();
+    const hy = Math.max(-R*.32, yU + bow*.5 + R*.16);
+    g.translate(-R*.3, hy); g.rotate(-.45);
+    g.fillStyle = "rgba(255,255,255,.95)"; g.beginPath(); g.ellipse(0, 0, R*.17, R*.1, 0, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(R*.17, R*.1, R*.045, R*.035, 0, 0, 7); g.fill();
+    g.restore(); }
+  /* the rim of the ball */
+  g.strokeStyle = dark ? "rgba(255,255,255,.35)" : "rgba(20,20,40,.28)"; g.lineWidth = Math.max(.7, R*.03); g.beginPath(); g.arc(0, 0, R - g.lineWidth/2, 0, 7); g.stroke();
+  g.restore();
+}
+
+/* ---------- the pairs: where they look and how they move ---------- */
+let last = performance.now();
+function frame(now){
+  const dt = Math.max(0, Math.min(.033, (now - last)/1000)); last = now;
+  /* the pane can open at zero size: wait for a real one */
+  if(innerWidth !== W || innerHeight !== H) fit();
+  if(W < 50 || H < 50){ requestAnimationFrame(frame); return; }
+  g.setTransform(D, 0, 0, D, 0, 0); g.clearRect(0, 0, W, H);
+  /* two menu bars at the top, light and dark, with the eyes at their real size */
+  const barH = 28;
+  g.fillStyle = "#f4f4f6"; g.fillRect(0, 0, W, barH); g.fillStyle = "#24252b"; g.fillRect(0, barH + 10, W, barH);
+  g.fillStyle = "#6b6e78"; g.font = "600 12px ui-rounded, -apple-system, system-ui"; g.textAlign = "left";
+  g.fillText("menu bar, real size", 16, 18); g.fillStyle = "#aeb1bb"; g.fillText("menu bar, dark", 16, barH + 28);
+  g.textAlign = "center";
+  const big = Math.min(W/10.5, H/5.2);
+  for(const p of pairs){
+    const ch = CH[p.who], small = p.size !== 1, R = small ? 9 : big;
+    const left = p.who === "madam";
+    p.cx = small ? W - (left ? 170 : 96) : W*(left ? .28 : .72); p.cy = p.size === 0 ? barH/2 : p.size === -1 ? barH + 10 + barH/2 : H*.56;
+    const gap = R*.22, centres = [[p.cx - R - gap/2, p.cy], [p.cx + R + gap/2, p.cy]];
+    /* blinking: hers sometimes twice, his rarely */
+    let close = 0;
+    if(now > p.blinkAt && p.blinkT < 0){ p.blinkT = now; p.twice = Math.random() < ch.double; }
+    if(p.blinkT >= 0){ const t = (now - p.blinkT)/1000, dur = .32;
+      close = t < .1 ? t/.1 : t < .14 ? 1 : Math.max(0, 1 - (t - .14)/.18);
+      if(t > dur){ if(p.twice){ p.twice = false; p.blinkT = now; } else { p.blinkT = -1; p.blinkAt = now + 1000*(ch.blink[0] + Math.random()*(ch.blink[1] - ch.blink[0])); } } }
+    p.wince = Math.max(0, p.wince - dt*2.2);
+    /* she glances away now and then, as if something caught her eye */
+    if(ch.wander && now > p.glanceAt){ p.glance = { a:(Math.random() - .5)*1.1, b:(Math.random() - .6)*.6, until:now + 500 + Math.random()*400 }; p.glanceAt = now + 4000 + Math.random()*5000; }
+    if(p.glance && now > p.glance.until) p.glance = null;
+    /* pupils open when the pointer comes close, close when poked */
+    const dist = Math.hypot(P.x - p.cx, P.y - p.cy), near = Math.max(0, 1 - dist/(R*9));
+    const pT = .36 + .2*near - .16*p.wince; p.pupil += (pT - p.pupil)*Math.min(1, dt*6);
+    for(let i = 0; i < 2; i++){
+      const e = p.eyes[i], [ex, ey] = centres[i];
+      /* each eye aims at the pointer from where it sits, so near the pointer they turn in */
+      const depth = Math.max(R*7.5, 420), lim = small ? .45 : .72;
+      let ta = Math.max(-lim, Math.min(lim, Math.atan2(P.x - ex, depth))), tb = Math.max(-lim, Math.min(lim, Math.atan2(P.y - ey, depth)));
+      if(p.glance){ ta = p.glance.a; tb = p.glance.b; }
+      if(now - P.t > 6000){ ta *= .3; tb = tb*.3 + .15; }
+      /* he only moves his eyes for something worth it: small changes are ignored */
+      if(Math.hypot(ta - e.ta, tb - e.tb) > ch.lazy){ e.ta = ta; e.tb = tb; }
+      e.va += (ch.k*(e.ta - e.a) - ch.c*e.va)*dt; e.vb += (ch.k*(e.tb - e.b) - ch.c*e.vb)*dt;
+      e.a += e.va*dt; e.b += e.vb*dt;
+      const tremor = small ? 0 : .004*Math.sin(now/37 + i*2);
+      eye(ex, ey, R, ch, e.a + tremor, e.b, i === 1, { close, wince:p.wince, pupil:p.pupil }, p.size === -1);
+    }
+    if(!small){ g.fillStyle = "#2a2c33"; g.font = "700 17px ui-rounded, -apple-system, system-ui"; g.fillText(ch.name, p.cx, p.cy + R*1.75);
+      g.fillStyle = "#7b7e88"; g.font = "600 13px ui-rounded, -apple-system, system-ui"; g.fillText("click to poke", p.cx, p.cy + R*1.75 + 22); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+addEventListener("pointerdown", e => { for(const p of pairs){ if(Math.hypot(e.clientX - p.cx, e.clientY - p.cy) < (p.size === 1 ? Math.min(W/10.5, H/5.2)*2.6 : 26)) p.wince = 1; } });
+window.lab = { pairs, P };
+</script>
+</body>
+</html>

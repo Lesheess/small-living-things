@@ -1,0 +1,64 @@
+ROOMIE 0.8
+A pair of eyes that lives in your menu bar and keeps an eye on you.
+For macOS 13 or later, Apple silicon and Intel.
+
+
+INSTALL
+
+1. Drag Roomie into your Applications folder.
+
+2. Double-click it. The first time, macOS will refuse to open it:
+   Roomie is not registered with Apple yet. To let it in:
+
+   macOS 15 or later
+     Open System Settings > Privacy & Security, scroll down to the line
+     about Roomie being blocked, click Open Anyway, and confirm.
+
+   macOS 13 or 14
+     Right-click (or Control-click) Roomie, choose Open, then Open again.
+
+3. A black pill drops from the menu bar: choose who moves in,
+   Madam or the Gentleman. The eyes live at the right side of your
+   menu bar. No Dock icon, no window.
+
+
+KEEP THEM AFTER A RESTART
+
+Right-click the eyes and choose Open at Login.
+
+
+WHAT THEY DO
+
+Every 20 minutes at the screen     look at something far away for 20 seconds; a chime at the end
+Every 30 minutes in the chair      a five-minute walk
+Past half past midnight            bed
+
+They hop out of the menu bar into the notch, and a black card opens
+with their line. Let it be and it slips away; they ask again later.
+
+You come back after a while        hearts in their eyes
+You poke them                      they squash; the third time, they cry down your screen
+You shake the mouse                dizzy
+You leave the Mac alone            they doze off
+The battery runs low               sad
+The Mac runs hot                   a bead of sweat
+You say you'll walk, and stay put   narrowed eyes and one dry remark
+
+On a call or watching something full screen, they keep quiet.
+For an hour of peace: right-click the eyes, Quiet for an Hour.
+For fewer nudges for good: right-click, Nudges, Only Walks and Bed,
+or None, Just Company (no nudges, just the eyes).
+Right-click the eyes and choose Playground to see all of it on buttons.
+
+
+WHAT THEY READ
+
+The clock, how long since you last touched the Mac, where the pointer is,
+that a click happened (not where), the battery level, how hot the Mac runs.
+Nothing on your screen, nothing you type. No network code at all.
+
+
+MOVING OUT
+
+If you turned on Open at Login, right-click the eyes and turn it off.
+Then choose Quit Roomie and drag Roomie to the Trash.

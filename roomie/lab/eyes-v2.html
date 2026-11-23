@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eyes v2</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #111216; color: #d9dadf; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  .row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; padding: 18px 16px 0; }
+  figure { margin: 0; border-radius: 26px; overflow: hidden; background: #1c1d23; }
+  figure.pill { background: transparent; }
+  figure.barD { background: #24262d; border-radius: 12px; }
+  figure.barL { background: #e9e8ec; border-radius: 12px; }
+  figcaption { text-align: center; font-size: 12px; color: #9a9ca6; padding: 0 0 10px; }
+  figure.barL figcaption { color: #55565e; }
+  canvas { display: block; margin: 0 auto; }
+  .ctl { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; padding: 22px 16px 40px; }
+  button { font: inherit; color: #e8e9ee; background: #2c2f37; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+  button:hover { background: #3a3d47; }
+</style>
+</head>
+<body>
+<div class="row">
+  <figure><canvas id="bigM"></canvas><figcaption>Madam</figcaption></figure>
+  <figure><canvas id="bigG"></canvas><figcaption>The Gentleman</figcaption></figure>
+</div>
+<div class="row">
+  <figure class="pill"><canvas id="pillM"></canvas></figure>
+  <figure class="pill"><canvas id="pillG"></canvas></figure>
+</div>
+<div class="row">
+  <figure class="barD"><canvas id="barDM"></canvas><canvas id="barDG"></canvas><figcaption>dark bar, real size</figcaption></figure>
+  <figure class="barL"><canvas id="barLM"></canvas><canvas id="barLG"></canvas><figcaption>light bar, real size</figcaption></figure>
+</div>
+<div class="ctl">
+  <button data-act="appear">From the dark</button>
+  <button data-act="love">Love</button>
+  <button data-act="glad">Glad</button>
+  <button data-act="caught">Caught</button>
+  <button data-act="sad">Sad</button>
+  <button data-act="sleepy">Sleepy</button>
+  <button data-act="dizzy">Dizzy</button>
+  <button data-act="poke">Poke</button>
+  <button data-act="blink">Blink</button>
+</div>
+<script>
+/* v2: no outline. A soft white ball, lit from the top left; a glossy iris (dark above, lighter below) with two crisp
+   white spots that stay where the light is; lids of the ball's own colour that cast a little shadow. Madam: a big
+   violet iris, a liner on her lid's edge and three curled lashes. The Gentleman: a smaller slate iris, a heavy lid.
+   Motion: springs that overshoot a touch, the ball squashing as it blinks, a little wind-up before a feeling. */
+const DPR = Math.max(1, window.devicePixelRatio || 1);
+const RED = ["#e59392", "#c45a59"], TEAR = "#3991d3";
+const WHO = {
+  madam: { k: 300, c: 19, rest: 0.04, iris: 0.7, irisC: ["#140f20", "#2b2150", "#6e5ecf", "#b1a6f5"], spotBig: 0.25, gap: 0.2, glance: [0.8, 2.2], lashes: true },
+  gentleman: { k: 120, c: 15, rest: 0.33, iris: 0.5, irisC: ["#0b0d11", "#1c252d", "#435565", "#7d90a2"], spotBig: 0.18, gap: 0.16, glance: [2.0, 4.6], lashes: false },
+};
+function spring(v) { return { x: v, t: v, v: 0 }; }
+function step(s, dt, k, c) { s.v += (k*(s.t - s.x) - c*s.v)*dt; s.x += s.v*dt; }
+function makeState(who) {
+  const eye = () => ({ top: spring(WHO[who].rest), tilt: spring(0), bot: spring(0), pup: spring(1) });
+  return { who, eyes: [eye(), eye()], gx: spring(0), gy: spring(0), size: spring(1), heart: spring(0), spiral: spring(0), glad: spring(0),
+           squash: spring(0), blinkS: spring(0), fade: spring(1), tear: 0, blinkUntil: 0, nextBlink: 1 + Math.random()*2, nextGlance: 1, scene: null, u: 0, t: 0, line: 0 };
+}
+const S = { madam: makeState("madam"), gentleman: makeState("gentleman") };
+let mouse = { x: innerWidth/2, y: 260 };
+addEventListener("pointermove", e => { mouse = { x: e.clientX, y: e.clientY }; });
+
+function rest(st) { const w = WHO[st.who];
+  st.eyes.forEach(e => { e.top.t = w.rest; e.tilt.t = 0; e.bot.t = 0; e.pup.t = 1; });
+  st.size.t = 1; st.heart.t = 0; st.spiral.t = 0; st.glad.t = 0; st.tear = 0; st.fade.t = 1; st.line = 0; }
+function lookAt(st, el) { const r = el.getBoundingClientRect(), dx = mouse.x - (r.left + r.width/2), dy = mouse.y - (r.top + r.height/2);
+  const d = Math.max(1, Math.hypot(dx, dy)), f = Math.min(1, d/320); st.gx.t = dx/d*f; st.gy.t = dy/d*f; }
+/* a wind-up: shrink a touch, then spring past full size */
+function pop(st, amount = 0.14) { st.size.x = 1 - amount*0.5; st.size.v = 0; st.size.t = 1; st.size.v = amount*30; }
+
+const SCENES = {
+  appear(st, u) {                                   /* out of the dark: the shut eyes fade in, then open with a pop */
+    if (u < 0.02) { st.fade.x = 0; st.fade.t = 0; }
+    if (u > 0.05) st.fade.t = 1;
+    st.blinkUntil = u < 0.75 ? st.t + 0.05 : 0;
+    if (u > 0.75 && u < 0.78) pop(st, 0.16);
+    return u < 1.6; },
+  love(st, u) {
+    if (u < 0.02) pop(st, 0.2);
+    const beat = [0.85, 1.1, 1.55, 1.8].reduce((a, b) => { const d = u - b; return a + (d > 0 && d < 0.2 ? 0.2*Math.sin(d/0.2*Math.PI) : 0); }, 0);
+    st.heart.t = u < 2.3 ? 1 + beat : 0; st.gx.t = 0; st.gy.t = 0; st.eyes.forEach(e => { e.top.t = 0; }); return u < 2.7; },
+  glad(st, u) { if (u < 0.02) pop(st, 0.12); st.glad.t = u < 2.2 ? 1 : 0; return u < 2.6; },
+  caught(st, u, el) {
+    const m = st.who === "madam";
+    if (u < 0.02) pop(st, 0.18);
+    if (u < 0.8) { st.size.t = 1.06; st.eyes.forEach(e => { e.top.t = 0; e.pup.t = 0.82; }); lookAt(st, el); }
+    else { st.size.t = 1;
+      st.eyes.forEach((e, i) => { const left = i === 0;
+        e.top.t = (m ? 0.33 : 0.42) + (left ? 0.08 : 0); e.tilt.t = 0.05; e.bot.t = left ? 0.2 : 0.14; e.pup.t = 0.88; });
+      if (u > 2.6 && u < 4.4) { const p = (u - 2.6)/1.8; st.gx.t = 0; st.gy.t = Math.sin(p*Math.PI)*0.95; } else lookAt(st, el); }
+    if (u > 6.1 && u < 6.45) st.blinkUntil = st.t + 0.05;
+    st.line = Math.max(0, Math.min(1, (u - 1.6)/0.5)) * (u < 8.6 ? 1 : Math.max(0, 1 - (u - 8.6)/0.3));
+    return u < 9; },
+  sad(st, u) { st.eyes.forEach(e => { e.top.t = 0.22; e.tilt.t = -0.24; e.bot.t = 0; e.pup.t = 1.1; });
+    st.gx.t = -0.15; st.gy.t = 0.6; st.tear = u > 0.5 ? (u - 0.5) % 1.4 / 1.4 : 0; return u < 4.2; },
+  sleepy(st, u) { const d = 0.6 + 0.12*Math.sin(u*1.6); st.eyes.forEach(e => { e.top.t = d; e.tilt.t = -0.03; e.bot.t = 0.04; });
+    st.gx.t = 0; st.gy.t = 0.5; return u < 4.4; },
+  dizzy(st, u) { st.spiral.t = u < 2.6 ? 1 : 0; return u < 3; },
+  poke(st, u) { if (u < 0.02) { st.squash.x = 1; st.squash.v = 0; st.squash.t = 0; st.blinkUntil = st.t + 0.12; } return u < 0.9; },
+  blink(st, u) { if (u < 0.02) st.blinkUntil = st.t + 0.13; return u < 0.4; },
+};
+
+/* ---- drawing ---- */
+function heartPath(w) { const p = new Path2D();
+  p.moveTo(0, w*0.85); p.bezierCurveTo(-w*0.6, w*0.45, -w, w*0.2, -w, -w*0.2);
+  p.bezierCurveTo(-w, -w*0.8, -w*0.2, -w*0.85, 0, -w*0.45); p.bezierCurveTo(w*0.2, -w*0.85, w, -w*0.8, w, -w*0.2);
+  p.bezierCurveTo(w, w*0.2, w*0.6, w*0.45, 0, w*0.85); p.closePath(); return p; }
+function lidY(R, top, tilt, x, right) { const s = right ? 1 : -1;
+  return -R*1.02 + top*2.04*R + tilt*R*(-x*s/R) - (1 - Math.min(1, (x/R)**2))*R*0.1*Math.min(1, Math.max(0, top)*4); }
+function lash(ctx, R, ang, len, w, s) {
+  const bx = s*Math.sin(ang)*R, by = -Math.cos(ang)*R, nx = s*Math.sin(ang), ny = -Math.cos(ang), px = -ny, py = nx;
+  const turn = -s*0.8, tx = bx + (nx*Math.cos(turn) - ny*Math.sin(turn))*len, ty = by + (nx*Math.sin(turn) + ny*Math.cos(turn))*len;
+  const cx = bx + nx*len*0.62, cy = by + ny*len*0.62, p = new Path2D();
+  p.moveTo(bx + px*w, by + py*w); p.quadraticCurveTo(cx + px*w*0.5, cy + py*w*0.5, tx, ty);
+  p.quadraticCurveTo(cx - px*w*0.2, cy - py*w*0.2, bx - px*w, by - py*w); p.closePath(); ctx.fill(p); }
+
+function drawEye(ctx, R, e, st, right, env) {
+  const w = WHO[st.who], s = right ? 1 : -1, light = env === "light", tiny = R < 12;
+  const blink = st.t < st.blinkUntil, top = blink ? 1.02 : Math.max(-0.1, Math.min(1.02, e.top.x));
+  const lashC = light ? "#1b1724" : "#ece8f6";
+  if (st.glad.x > 0.5) {
+    /* glad: a crescent, the eye squeezed shut from below: thick in the middle, tapering to fine ends */
+    ctx.save(); const cut = new Path2D(); cut.rect(-R*2, -R*2, R*4, R*4); cut.arc(0, R*0.8, R*0.84, 0, Math.PI*2); ctx.clip(cut, "evenodd");
+    const cg = ctx.createLinearGradient(0, -R*0.35, 0, R*0.1);
+    if (light) { cg.addColorStop(0, "#3a3346"); cg.addColorStop(1, "#1d1924"); } else { cg.addColorStop(0, "#ffffff"); cg.addColorStop(1, "#d9d7e1"); }
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, R*0.42, R*0.78, 0, Math.PI*2); ctx.fill(); ctx.restore();
+    if (w.lashes) { ctx.fillStyle = lashC; ctx.save(); ctx.translate(0, R*0.42); [1.0, 1.24].forEach((a, i) => lash(ctx, R*0.74, a, R*(0.3 - i*0.06), R*0.07, s)); ctx.restore(); }
+    return; }
+  const ball = new Path2D(); ball.arc(0, 0, R, 0, Math.PI*2);
+  /* on a light bar a white ball needs a faint edge and a soft drop shadow, or it vanishes */
+  if (light) { ctx.save(); ctx.shadowColor = "rgba(30, 25, 50, 0.28)"; ctx.shadowBlur = R*0.5; ctx.shadowOffsetY = R*0.12; ctx.fillStyle = "#fff"; ctx.fill(ball); ctx.restore(); }
+  const g = ctx.createRadialGradient(-R*0.3, -R*0.38, R*0.05, 0, 0, R*1.05);
+  g.addColorStop(0, "#ffffff"); g.addColorStop(0.62, "#f3f2ef"); g.addColorStop(1, "#d3d1dc");
+  ctx.fillStyle = g; ctx.fill(ball);
+  if (light) { ctx.strokeStyle = "rgba(38, 30, 60, 0.42)"; ctx.lineWidth = Math.max(1, R*0.1); ctx.stroke(ball); }
+  ctx.save(); ctx.clip(ball);
+  const gx = st.gx.x*R*0.34, gy = st.gy.x*R*0.3, ri = R*w.iris*e.pup.x;
+  if (st.spiral.x > 0.05) {
+    ctx.strokeStyle = w.irisC[1]; ctx.lineWidth = R*0.13; ctx.lineCap = "round"; ctx.globalAlpha = Math.min(1, st.spiral.x); ctx.beginPath();
+    for (let k = 0; k <= 60; k++) { const q = k/60, a = st.t*8*s + q*Math.PI*5, rr = R*0.76*q, x = Math.cos(a)*rr, y = Math.sin(a)*rr; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  } else if (st.heart.x > 0.03) {
+    const hw = R*0.74*st.heart.x; ctx.save(); ctx.translate(gx*0.3, gy*0.3 + R*0.05);
+    const hg = ctx.createLinearGradient(0, -hw, 0, hw); hg.addColorStop(0, RED[0]); hg.addColorStop(1, RED[1]);
+    ctx.fillStyle = hg; ctx.fill(heartPath(hw)); ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.ellipse(-hw*0.45, -hw*0.32, hw*0.2, hw*0.14, -0.6, 0, Math.PI*2); ctx.fill(); ctx.restore();
+  } else {
+    /* the iris: dark above, glowing lighter toward its lower rim, like glass with light coming through */
+    const ig = ctx.createLinearGradient(0, gy - ri, 0, gy + ri);
+    ig.addColorStop(0, w.irisC[0]); ig.addColorStop(0.5, w.irisC[1]); ig.addColorStop(0.84, w.irisC[2]); ig.addColorStop(1, w.irisC[3]);
+    const iris = new Path2D(); iris.arc(gx, gy, ri, 0, Math.PI*2);
+    ctx.fillStyle = ig; ctx.fill(iris);
+    ctx.fillStyle = "rgba(4, 3, 8, 0.75)"; ctx.beginPath(); ctx.arc(gx, gy - ri*0.06, ri*0.46, 0, Math.PI*2); ctx.fill();
+    if (!tiny) { ctx.save(); ctx.clip(iris); ctx.fillStyle = "#fff";
+      const sb = R*w.spotBig*(st.tear ? 1.25 : 1);
+      ctx.beginPath(); ctx.ellipse(-R*0.24 + gx*0.3, -R*0.27 + gy*0.3, sb, sb*0.8, -0.5, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(R*0.2 + gx*0.3, R*0.2 + gy*0.3, sb*0.36, 0, Math.PI*2); ctx.fill(); ctx.restore(); }
+    else { ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(-R*0.22 + gx*0.3, -R*0.25 + gy*0.3, R*0.2, 0, Math.PI*2); ctx.fill(); }
+  }
+  /* lids: the ball's own colour, a touch deeper, and a soft shadow on the ball under their edge */
+  const N = 28, xs = [...Array(N + 1)].map((_, i) => -R*1.05 + 2.1*R*i/N), Y = x => lidY(R, top, e.tilt.x, x, right);
+  if (top > -0.05) {
+    ctx.save(); const sh = new Path2D(); sh.moveTo(-R*1.1, Y(-R*1.05)); xs.forEach(x => sh.lineTo(x, Y(x) + R*0.22)); sh.lineTo(R*1.1, -R*1.2); sh.lineTo(-R*1.1, -R*1.2); sh.closePath();
+    ctx.fillStyle = "rgba(48, 36, 84, 0.16)"; ctx.fill(sh); ctx.restore();
+    const up = new Path2D(); up.moveTo(-R*1.1, -R*1.2); xs.forEach(x => up.lineTo(x, Y(x))); up.lineTo(R*1.1, -R*1.2); up.closePath();
+    const lg = ctx.createLinearGradient(0, -R, 0, Math.max(-R + 1, Y(0)));
+    if (st.who === "madam") { lg.addColorStop(0, "#fbfaf8"); lg.addColorStop(1, "#e3dfeb"); }
+    else { lg.addColorStop(0, "#e4e3e9"); lg.addColorStop(1, "#c8c6d1"); }
+    ctx.fillStyle = lg; ctx.fill(up);
+    if (!w.lashes) { /* his lid's edge: a firm crease, a touch heavier in the middle */
+      ctx.fillStyle = "#2b2f37"; const crease = new Path2D();
+      xs.forEach((x, i) => { const wv = R*(0.035 + 0.035*(1 - (x/R)**2)); i ? crease.lineTo(x, Y(x) - wv*0.4) : crease.moveTo(x, Y(x) - wv*0.4); });
+      [...xs].reverse().forEach(x => { const wv = R*(0.035 + 0.035*(1 - (x/R)**2)); crease.lineTo(x, Y(x) + wv*0.6); });
+      crease.closePath(); ctx.fill(crease); }
+    if (w.lashes) { /* her liner: the lid's edge, thin inside, thickening toward the outer corner */
+      ctx.fillStyle = "#1b1724"; const lw0 = R*0.035, lw1 = R*0.14; const liner = new Path2D();
+      xs.forEach((x, i) => { const t = (x*s/R + 1.05)/2.1, wv = lw0 + (lw1 - lw0)*t*t; i ? liner.lineTo(x, Y(x) - wv*0.3) : liner.moveTo(x, Y(x) - wv*0.3); });
+      [...xs].reverse().forEach(x => { const t = (x*s/R + 1.05)/2.1, wv = lw0 + (lw1 - lw0)*t*t; liner.lineTo(x, Y(x) + wv*0.7); });
+      liner.closePath(); ctx.fill(liner); }
+  }
+  if (e.bot.x > 0.02) {
+    const yB = R*1.02 - e.bot.x*2*R, YB = x => yB - (1 - (x/R)**2)*R*0.18, lo = new Path2D();
+    lo.moveTo(-R*1.1, R*1.2); xs.forEach(x => lo.lineTo(x, YB(x))); lo.lineTo(R*1.1, R*1.2); lo.closePath();
+    ctx.fillStyle = st.who === "madam" ? "#e6e2ec" : "#dcdae2"; ctx.fill(lo);
+    ctx.strokeStyle = st.who === "madam" ? "rgba(27, 23, 36, 0.55)" : "#2b2f37"; ctx.lineWidth = R*0.045; ctx.beginPath(); xs.forEach((x, i) => i ? ctx.lineTo(x, YB(x)) : ctx.moveTo(x, YB(x))); ctx.stroke(); }
+  ctx.restore();
+  /* her lashes leave the rim where the lid meets it, curling out and up */
+  if (w.lashes) {
+    const yL = Math.max(-R*0.999, Math.min(R*0.999, Y(s*R*0.9))), lidAng = Math.acos(-yL/R);
+    ctx.fillStyle = lashC;
+    [0.78, 1.05, 1.32].forEach((a, i) => lash(ctx, R*0.98, Math.max(a, lidAng + 0.1 + i*0.27), R*(0.4 - i*0.06), R*0.075, s)); }
+  if (st.tear > 0) { const y = R*0.6 + st.tear*R*1.6, x = s*R*0.72, r = R*0.15;
+    ctx.globalAlpha = Math.min(1, (1 - st.tear)*3); ctx.fillStyle = TEAR; ctx.beginPath();
+    ctx.moveTo(x, y - r*1.9); ctx.quadraticCurveTo(x + r*1.1, y - r*0.2, x, y + r); ctx.quadraticCurveTo(x - r*1.1, y - r*0.2, x, y - r*1.9); ctx.fill(); ctx.globalAlpha = 1; }
+}
+function drawFace(ctx, cx, cy, R, st, env) {
+  const w = WHO[st.who];
+  ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, st.fade.x)); ctx.translate(cx, cy + R);
+  /* a poke squashes the face; a blink squashes the balls a little and stretches them sideways */
+  ctx.scale(1 + 0.16*st.squash.x, 1 - 0.3*st.squash.x); ctx.translate(0, -R);
+  const r = R*st.size.x, gap = R*w.gap, b = st.blinkS.x;
+  for (let i = 0; i < 2; i++) { const right = i === 1;
+    ctx.save(); ctx.translate((right ? 1 : -1)*(r + gap/2) + st.gx.x*R*0.12, st.gy.x*R*0.08); ctx.scale(1 + 0.05*b, 1 - 0.09*b);
+    drawEye(ctx, r, st.eyes[i], st, right, env); ctx.restore(); }
+  ctx.restore(); }
+
+/* ---- views ---- */
+function cv(id, w, h) { const c = document.getElementById(id); c.width = w*DPR; c.height = h*DPR; c.style.width = w + "px"; c.style.height = h + "px"; return { c, ctx: c.getContext("2d"), w, h }; }
+const LINES = { madam: "Going, you said. Darling, I can see you.", gentleman: "A remarkably brief stroll, if I may say so." };
+const views = [
+  { ...cv("bigM", 320, 200), st: S.madam, R: 54 }, { ...cv("bigG", 320, 200), st: S.gentleman, R: 54 },
+  { ...cv("pillM", 330, 140), st: S.madam, R: 19, pill: true }, { ...cv("pillG", 330, 140), st: S.gentleman, R: 19, pill: true },
+  { ...cv("barDM", 100, 34), st: S.madam, R: 7.3 }, { ...cv("barDG", 100, 34), st: S.gentleman, R: 7.3 },
+  { ...cv("barLM", 100, 34), st: S.madam, R: 7.3, env: "light" }, { ...cv("barLG", 100, 34), st: S.gentleman, R: 7.3, env: "light" },
+];
+function drawPill(v) {
+  const ctx = v.ctx, W = v.w, H = v.h, nW = 150, nH = 26, f = 6, cw = 300, ch = 118, x0 = (W - cw)/2;
+  /* a strip of menu bar with its notch, and the black card grown out of it */
+  ctx.fillStyle = "#2a2c33"; ctx.fillRect(0, 0, W, nH);
+  ctx.fillStyle = "#000"; ctx.beginPath(); ctx.moveTo(x0 - f, 0); ctx.arcTo(x0, 0, x0, f, f); ctx.lineTo(x0, ch - 24); ctx.arcTo(x0, ch, x0 + 24, ch, 24);
+  ctx.lineTo(x0 + cw - 24, ch); ctx.arcTo(x0 + cw, ch, x0 + cw, ch - 24, 24); ctx.lineTo(x0 + cw, f); ctx.arcTo(x0 + cw, 0, x0 + cw + f, 0, f); ctx.closePath(); ctx.fill();
+  drawFace(ctx, W/2, nH + 26, v.R, v.st, "dark");
+  if (v.st.line > 0) { ctx.globalAlpha = v.st.line; ctx.fillStyle = "#fff"; ctx.font = "600 14px -apple-system, BlinkMacSystemFont, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(LINES[v.st.who], W/2, nH + 74); ctx.globalAlpha = 1; }
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.033, (now - last)/1000); last = now;
+  for (const st of [S.madam, S.gentleman]) {
+    const w = WHO[st.who], el = (st.who === "madam" ? views[0] : views[1]).c; st.t += dt;
+    if (st.scene) { st.u += dt; if (!SCENES[st.scene](st, st.u, el)) { st.scene = null; rest(st); } }
+    else {
+      if (st.t > st.nextGlance) { st.nextGlance = st.t + w.glance[0] + Math.random()*(w.glance[1] - w.glance[0]);
+        if (Math.random() < 0.5) { st.gx.t = (Math.random()*2 - 1)*0.85; st.gy.t = (Math.random()*2 - 1)*0.55; if (Math.random() < 0.4) st.blinkUntil = st.t + 0.12; }
+        else lookAt(st, el); }
+      if (st.t > st.nextBlink) { st.blinkUntil = st.t + 0.12; st.nextBlink = st.t + 2 + Math.random()*4;
+        if (st.who === "madam" && Math.random() < 0.35) { const at = st.t + 0.25; setTimeout(() => st.blinkUntil = at + 0.1, 250); } }
+    }
+    st.blinkS.t = st.t < st.blinkUntil ? 1 : 0;
+    const n = 4, h = dt/n;
+    for (let j = 0; j < n; j++) {
+      st.eyes.forEach(e => { step(e.top, h, w.k, w.c); step(e.tilt, h, w.k, w.c); step(e.bot, h, w.k, w.c); step(e.pup, h, w.k*1.4, w.c); });
+      step(st.gx, h, w.k, w.c*0.85); step(st.gy, h, w.k, w.c*0.85); step(st.size, h, 320, 14); step(st.heart, h, 260, 9);
+      step(st.spiral, h, 120, 18); step(st.glad, h, 300, 30); step(st.squash, h, 196, 12); step(st.blinkS, h, 700, 30); step(st.fade, h, 40, 13);
+    }
+  }
+  for (const v of views) { const ctx = v.ctx; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, v.w, v.h);
+    if (v.pill) drawPill(v); else drawFace(ctx, v.w/2, v.h/2, v.R, v.st, v.env || "dark"); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => { for (const st of [S.madam, S.gentleman]) { rest(st); st.scene = b.dataset.act; st.u = 0; } });
+for (const st of [S.madam, S.gentleman]) { st.scene = "appear"; st.u = 0; }
+</script>
+</body>
+</html>

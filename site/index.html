@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roomie: a pair of eyes that lives in your Mac's menu bar</title>
+<meta name="description" content="Roomie lives in your menu bar: Madam or the Gentleman, a pair of eyes that keeps you company and reminds you to look away, to walk and to go to bed. Free, for macOS 13 or later.">
+<meta name="theme-color" content="#0e0f14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Roomie: a pair of eyes that lives in your Mac's menu bar">
+<meta property="og:description" content="Madam or the Gentleman: they watch you work, and nudge you to look away, to walk and to go to bed. Free, for macOS 13 or later.">
+<meta property="og:image" content="https://lesheess.github.io/small-living-things/roomie/media/og.jpg">
+<meta property="og:url" content="https://lesheess.github.io/small-living-things/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="roomie/media/icon.png">
+<link rel="stylesheet" href="style.css?v=0.8">
+</head>
+<body>
+<header class="bar">
+  <a class="home" href="./">Small Living Things</a>
+  <a href="#install">Install</a>
+  <a href="#us">Who made it</a>
+  <span class="gap"></span>
+  <canvas data-roomie></canvas>
+  <time data-clock></time>
+</header>
+<canvas id="rain" aria-hidden="true"></canvas>
+
+<main>
+  <div class="hero with-stage">
+    <div>
+    <h1>Roomie lives in your menu bar.</h1>
+    <p class="lead">A pair of eyes that <b>keeps you company</b>, and keeps an eye on you: look away now and then, get up and walk, go to bed.</p>
+    <div class="get">
+      <a class="btn" href="roomie/Roomie.zip" download>Download for Mac</a>
+      <button class="share" type="button" data-share>Send the link to my Mac</button>
+      <span class="small">Free · no network · no permissions<br>Version 0.8 · 0.8 MB · macOS 13 or later, Apple silicon and&nbsp;Intel</span>
+      <p class="phone-note">Roomie is for Macs. Send it to yours.</p>
+    </div>
+    </div>
+    <figure class="stage"><canvas data-stage></canvas></figure>
+  </div>
+
+  <section class="flow row">
+    <div class="head"><h2>Who moves in?</h2>
+    <p class="dim">You pick one. Two would only argue.</p></div>
+    <div class="body">
+    <div class="who">
+      <article>
+        <div class="who-head">
+          <div>
+            <h3>Madam</h3>
+            <p>Big violet eyes, a flick of liner, curled lashes. Never quite still. Calls you darling.</p>
+          </div>
+          <button class="pick" type="button" data-who="madam">Put her in the bar above</button>
+        </div>
+        <figure class="moods"><img src="roomie/media/madam.png" width="1302" height="122" alt="Madam in seven moods: watching, hearts, glad, asleep, dizzy, crying, sweating."></figure>
+      </article>
+      <article>
+        <div class="who-head">
+          <div>
+            <h3>The Gentleman</h3>
+            <p>Slate eyes under heavy lids, slow looks, perfect manners. Moves his eyes only for something worth it.</p>
+          </div>
+          <button class="pick" type="button" data-who="gentleman">Put him in the bar above</button>
+        </div>
+        <figure class="moods"><img src="roomie/media/gentleman.png" width="1302" height="122" alt="The Gentleman in seven moods: watching, hearts, glad, asleep, dizzy, crying, sweating."></figure>
+      </article>
+    </div>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="head"><h2>A gentle nudge</h2>
+      <p class="dim">They hop out of the menu bar into the notch, and a black card opens with their line. Answer, or let it be: it slips away, and they ask again later.</p></div>
+    <div class="body">
+      <p>Every twenty minutes at the screen, they ask you to look at something far away for twenty seconds, and they count; a soft chime tells you when. Every half hour in the chair, a five-minute walk. Past half past midnight, bed.</p>
+      <p>Say you'll walk and stay put, and they will notice.</p>
+    <figure class="shot"><img src="roomie/media/caught.png" width="640" height="168" alt="Madam's card under the notch: her eyes narrowed, following you, and her line: “Going, you said. Darling, I can see you.”"></figure>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="head"><h2>What you do, and what they do</h2></div>
+    <div class="body">
+    <dl class="pairs">
+      <dt>You come back after a while</dt><dd>Hearts in their eyes.</dd>
+      <dt>You poke them</dt><dd>They squash. The third time, they cry down your screen.</dd>
+      <dt>You say you'll walk, and stay put</dt><dd>Narrowed eyes, and one dry remark.</dd>
+    </dl>
+    <p class="more">There is more. You'll find it.</p>
+    </div>
+  </section>
+
+  <section class="row" id="install">
+    <div class="head"><h2>Install</h2>
+      <p class="dim">Two minutes, once. The same steps are in the zip, as “How to install.txt”.</p></div>
+    <div class="body">
+    <ol class="steps">
+      <li><b>Download</b> and unzip. Drag Roomie into your Applications folder.</li>
+      <li><b>Double-click it.</b> macOS will stop it once, because Roomie is not registered with Apple: registration costs 99 dollars a year, and Roomie is free. The message says Apple <q>could not verify</q> it. Press <kbd>Done</kbd>. Roomie has <a href="#print">no network code at all</a>, so nothing leaves your Mac.</li>
+      <li><b>Let it in.</b> Not sure which macOS you have? Apple menu → <kbd>About This Mac</kbd>.
+        <ul>
+          <li><b>macOS 15 or later:</b> open <kbd>System Settings</kbd> → <kbd>Privacy &amp; Security</kbd> and scroll down to this line:
+            <div class="settings" aria-hidden="true"><span>“Roomie” was blocked to protect your Mac.</span><span class="open">Open Anyway</span></div>
+            Click <kbd>Open Anyway</kbd>, then <kbd>Open Anyway</kbd> again, and enter your password.</li>
+          <li><b>macOS 13 or 14:</b> right-click Roomie, choose <kbd>Open</kbd>, then <kbd>Open</kbd> again.</li>
+        </ul>
+        You do this once. After that it opens like any other app.
+      </li>
+      <li><b>Choose who moves in.</b> A black pill drops from the menu bar: Madam or the Gentleman. The eyes appear at the right side of your menu bar. No Dock icon, no window.</li>
+      <li><b>To keep them after a restart:</b> right-click the eyes and choose <kbd>Open at Login</kbd>.</li>
+    </ol>
+    <p class="small">Don't see them? On a full menu bar, macOS hides icons behind the notch. Quit an app you don't need there, and they will appear.</p>
+    <div class="get"><a class="btn" href="roomie/Roomie.zip" download>Download for Mac</a></div>
+    </div>
+  </section>
+
+  <section class="print row" id="print">
+    <div class="head"><h2>Small print</h2></div>
+    <div class="body split">
+    <div>
+      <h3>What they read</h3>
+      <p>The clock. How long since you last touched the Mac. Where the pointer is. That a mouse click happened, not where and not on what. The battery level. How hot the Mac is running. Whether the microphone is in use, so they keep quiet on calls; never what it hears. Whether the front window fills the screen.</p>
+      <p>Nothing on your screen and nothing you type. There is no network code at all, so nothing leaves your Mac, and macOS never asks you for a permission, because none is needed.</p>
+    </div>
+    <div>
+      <h3>Peace and quiet</h3>
+      <p>On a call or watching something full screen, they keep quiet. For an hour of peace, right-click the eyes: <kbd>Quiet for an Hour</kbd>. For fewer nudges for good, or none at all: <kbd>Nudges</kbd>, then <kbd>Only Walks and Bed</kbd> or <kbd>None, Just Company</kbd>.</p>
+      <h3>Moving out</h3>
+      <p>If you turned on <kbd>Open at Login</kbd>, right-click the eyes and turn it off. Then choose <kbd>Quit Roomie</kbd> and drag Roomie from Applications to the Trash.</p>
+      <p class="dim">The only thing they remember is who lives here.</p>
+    </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="small">
+  <span>Small Living Things, 2026 · <span class="bye">See you in your menu bar.</span></span>
+  <span class="made" id="us" role="group" aria-label="Made by lesheess and Still"><span aria-hidden="true">made by</span>
+    <span class="maker" tabindex="0" aria-label="lesheess"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M11.26 22.15C11.04 21.96 10.25 21.50 9.49 21.13C7.13 19.95 6.43 19.08 6.44 17.33C6.44 16.33 6.61 15.76 7.17 14.96L7.50 14.48L7.79 15.11C8.02 15.59 8.36 16.02 9.20 16.88C11.050 18.78 11.79 20.30 11.69 21.97L11.65 22.48L11.26 22.15ZM13.41 19.25C13.49 18.62 13.85 14.58 13.94 13.29C13.99 12.60 14.06 12.20 14.14 12.17C14.35 12.10 15.45 16.090 15.45 16.94C15.45 17.55 15.24 17.86 14.12 18.95L13.36 19.69L13.41 19.25ZM4.78 16.12C4.71 15.96 4.66 15.39 4.66 14.76C4.65 13.69 4.66 13.66 4.99 13.15C5.29 12.68 5.41 12.59 6.27 12.19C6.79 11.94 7.37 11.67 7.56 11.58C8.02 11.36 9.46 9.91 10.07 9.05C11.67 6.81 12.83 6.04 14.56 6.04C15.85 6.04 16.97 6.56 18.08 7.67C18.55 8.14 19.39 9.31 19.39 9.50C19.39 9.54 19.03 9.38 18.57 9.14C16.58 8.070 15.39 8.21 13.50 9.70C12.34 10.61 10.96 11.43 9.78 11.91C7.40 12.86 6.18 13.86 5.36 15.49C4.90 16.40 4.90 16.40 4.78 16.12ZM9.88 14.57C9.54 14.43 8.94 13.79 8.94 13.58C8.94 13.40 9.89 13.11 11.23 12.85C12.32 12.65 12.37 12.67 12.24 13.37C12.06 14.35 10.82 14.98 9.88 14.57ZM16.63 13.42C16.15 13.22 15.52 12.42 15.71 12.25C15.93 12.050 17.87 11.65 18.62 11.65C19.00 11.65 19.00 11.66 19.00 12.03C19.00 13.08 17.70 13.84 16.63 13.42ZM6.93 10.30C6.46 9.58 6.15 8.30 6.21 7.34C6.26 6.36 6.44 5.86 7.21 4.56C7.48 4.10 7.82 3.42 7.96 3.06L8.21 2.40L8.62 3.01C9.37 4.13 9.63 4.95 9.63 6.13C9.63 7.56 8.71 9.44 7.55 10.37L7.17 10.67L6.93 10.30ZM11.04 5.61C11.11 4.65 11.51 3.87 12.28 3.17C12.63 2.85 12.95 2.58 12.99 2.58C13.04 2.58 13.61 2.34 14.27 2.050L15.47 1.51L15.40 2.07C15.22 3.57 14.49 4.50 13.07 5.050C12.48 5.28 11.21 6.04 11.21 6.16C11.21 6.20 11.16 6.23 11.10 6.23C11.02 6.23 11.00 6.04 11.04 5.61Z"/></svg><span class="tip" aria-hidden="true">lesheess</span></span>
+    <span class="maker" tabindex="0" aria-label="Still"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M7 10.9a5 5 0 0 1 10 0"/><path d="M3 10.9h18M6.5 14.9h11M10 18.4h4"/></svg><span class="tip" aria-hidden="true">Still</span></span></span>
+  <span>Fonts: Lilita One and Golos Text, SIL Open Font License.</span>
+</footer>
+<script src="roomie.js?v=0.8"></script>
+<script src="stage.js?v=0.8"></script>
+</body>
+</html>

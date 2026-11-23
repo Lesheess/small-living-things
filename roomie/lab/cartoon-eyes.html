@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartoon eyes</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #1b1d22; color: #d9dadf; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  .row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; padding: 18px 16px 0; }
+  figure { margin: 0; border-radius: 26px; overflow: hidden; }
+  figure.light { background: #f4f3f1; }
+  figure.dark { background: #000; }
+  figure.bar { background: #2a2c33; border-radius: 12px; }
+  figcaption { text-align: center; font-size: 12px; color: #8b8d96; padding: 0 0 10px; }
+  figure.light figcaption { color: #8a8780; }
+  canvas { display: block; }
+  .ctl { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; padding: 22px 16px 40px; }
+  button { font: inherit; color: #e8e9ee; background: #2c2f37; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+  button:hover { background: #3a3d47; }
+</style>
+</head>
+<body>
+<div class="row">
+  <figure class="light"><canvas id="madam"></canvas><figcaption>Madam</figcaption></figure>
+  <figure class="light"><canvas id="gent"></canvas><figcaption>The Gentleman</figcaption></figure>
+</div>
+<div class="row">
+  <figure class="dark"><canvas id="pillM"></canvas><figcaption>in the pill</figcaption></figure>
+  <figure class="dark"><canvas id="pillG"></canvas><figcaption>in the pill</figcaption></figure>
+  <figure class="bar"><canvas id="barM"></canvas><canvas id="barG"></canvas><figcaption>menu bar, real size</figcaption></figure>
+</div>
+<div class="ctl">
+  <button data-act="love">Love</button>
+  <button data-act="glad">Glad</button>
+  <button data-act="caught">Caught</button>
+  <button data-act="sad">Sad</button>
+  <button data-act="sleepy">Sleepy</button>
+  <button data-act="dizzy">Dizzy</button>
+  <button data-act="poke">Poke</button>
+  <button data-act="blink">Blink</button>
+</div>
+<script>
+/* Two roommates in one drawing language: a black outline, a white ball, a big black pupil with two flat white
+   spots that stay put while the pupil moves. Madam: a huge pupil in a thin coloured ring, three curved lashes.
+   The Gentleman: a smaller plain pupil and a heavy lid. Emotion is the lid line, the pupil and the timing. */
+const DPR = Math.max(1, window.devicePixelRatio || 1);
+const INK = "#141414", RED = "#cd6766", TEAR = "#3991d3";
+const WHO = {
+  madam:     { k: 240, c: 17, rest: 0,    pupil: 0.66, ring: ["#7c8fe0", "#b3c0f3"], lashes: true,  gap: 0.18, glance: [0.8, 2.2] },
+  gentleman: { k: 110, c: 16, rest: 0.3,  pupil: 0.44, ring: null,                   lashes: false, gap: 0.14, glance: [2.0, 4.6] },
+};
+function spring(v) { return { x: v, t: v, v: 0 }; }
+function step(s, dt, k, c) { s.v += (k*(s.t - s.x) - c*s.v)*dt; s.x += s.v*dt; }
+
+/* one state per roommate */
+function makeState(who) {
+  const eye = () => ({ top: spring(WHO[who].rest), tilt: spring(0), bot: spring(0), pup: spring(1) });
+  return { who, eyes: [eye(), eye()], gx: spring(0), gy: spring(0), size: spring(1), heart: spring(0), spiral: spring(0),
+           glad: spring(0), squash: spring(0), tear: 0, blinkUntil: 0, nextBlink: 1 + Math.random()*2, nextGlance: 1, scene: null, u: 0, t: 0 };
+}
+const S = { madam: makeState("madam"), gentleman: makeState("gentleman") };
+let mouse = { x: innerWidth/2, y: 300 };
+addEventListener("pointermove", e => { mouse = { x: e.clientX, y: e.clientY }; });
+
+/* ---- scenes ---- */
+function rest(st) { const w = WHO[st.who];
+  st.eyes.forEach(e => { e.top.t = w.rest; e.tilt.t = 0; e.bot.t = 0; e.pup.t = 1; });
+  st.size.t = 1; st.heart.t = 0; st.spiral.t = 0; st.glad.t = 0; st.tear = 0; }
+function lookAt(st, el) {
+  const r = el.getBoundingClientRect(), dx = mouse.x - (r.left + r.width/2), dy = mouse.y - (r.top + r.height/2);
+  const d = Math.max(1, Math.hypot(dx, dy)), f = Math.min(1, d/320); st.gx.t = dx/d*f; st.gy.t = dy/d*f; }
+const SCENES = {
+  love(st, u) {
+    const beat = [0.85, 1.1, 1.55, 1.8].reduce((a, b) => { const d = u - b; return a + (d > 0 && d < 0.2 ? 0.22*Math.sin(d/0.2*Math.PI) : 0); }, 0);
+    st.heart.t = u < 2.3 ? 1 + beat : 0; st.heart.x = Math.max(st.heart.x, 0); st.gx.t = 0; st.gy.t = 0;
+    st.eyes.forEach(e => { e.top.t = 0; }); return u < 2.7; },
+  glad(st, u) { st.glad.t = u < 2.2 ? 1 : 0; return u < 2.6; },
+  caught(st, u, el) {
+    const m = st.who === "madam";
+    if (u < 0.8) { st.size.t = 1.08; st.eyes.forEach(e => { e.top.t = 0; e.pup.t = 0.8; }); lookAt(st, el); }
+    else {
+      st.size.t = 1;
+      st.eyes.forEach((e, i) => { const left = i === 0;
+        e.top.t = (m ? 0.34 : 0.42) + (left ? 0.08 : 0); e.tilt.t = 0.05; e.bot.t = left ? 0.2 : 0.14; e.pup.t = 0.86; });
+      if (u > 2.6 && u < 4.4) { const p = (u - 2.6)/1.8; st.gx.t = 0; st.gy.t = Math.sin(p*Math.PI)*0.95; } else lookAt(st, el);
+    }
+    if (u > 6.1 && u < 6.45) st.blinkUntil = st.t + 0.05;
+    return u < 9; },
+  sad(st, u) { st.eyes.forEach(e => { e.top.t = 0.22; e.tilt.t = -0.22; e.bot.t = 0; e.pup.t = 1.12; });
+    st.gx.t = -0.15; st.gy.t = 0.6; st.tear = u > 0.5 ? (u - 0.5) % 1.4 / 1.4 : 0; return u < 4.2; },
+  sleepy(st, u) { const d = 0.6 + 0.12*Math.sin(u*1.6); st.eyes.forEach(e => { e.top.t = d; e.tilt.t = -0.03; e.bot.t = 0; });
+    st.gx.t = 0; st.gy.t = 0.5; return u < 4.4; },
+  dizzy(st, u) { st.spiral.t = u < 2.6 ? 1 : 0; return u < 3; },
+  poke(st, u) { if (u < 0.02) { st.squash.x = 1; st.squash.v = 0; st.squash.t = 0; st.blinkUntil = st.t + 0.12; } return u < 0.9; },
+  blink(st, u) { if (u < 0.02) st.blinkUntil = st.t + 0.13; return u < 0.4; },
+};
+
+/* ---- drawing ---- */
+function heartPath(w) { const p = new Path2D();
+  p.moveTo(0, w*0.85); p.bezierCurveTo(-w*0.6, w*0.45, -w, w*0.2, -w, -w*0.2);
+  p.bezierCurveTo(-w, -w*0.8, -w*0.2, -w*0.85, 0, -w*0.45); p.bezierCurveTo(w*0.2, -w*0.85, w, -w*0.8, w, -w*0.2);
+  p.bezierCurveTo(w, w*0.2, w*0.6, w*0.45, 0, w*0.85); p.closePath(); return p; }
+/* the lid's edge: a gentle curve from rim to rim at height y (inner end lower by tilt) */
+function lidY(R, top, tilt, x, right) { const s = right ? 1 : -1; return -R + top*2*R + tilt*R*(-x*s/R) - (1 - (x/R)**2)*R*0.06*Math.min(1, top*4); }
+function lash(ctx, R, ang, len, lw, s) {
+  /* a lash: thick where it grows from the rim, curling out and up to a fine tip (a soft hook, not a spike) */
+  const bx = s*Math.sin(ang)*R, by = -Math.cos(ang)*R, nx = s*Math.sin(ang), ny = -Math.cos(ang);
+  const px = -ny, py = nx, w = lw*1.05;
+  const turn = -s*0.75;                                       /* how far it curls toward straight up */
+  const tx = bx + (nx*Math.cos(turn) - ny*Math.sin(turn))*len, ty = by + (nx*Math.sin(turn) + ny*Math.cos(turn))*len;
+  const cx = bx + nx*len*0.62, cy = by + ny*len*0.62;
+  const p = new Path2D();
+  p.moveTo(bx + px*w, by + py*w); p.quadraticCurveTo(cx + px*w*0.55, cy + py*w*0.55, tx, ty);
+  p.quadraticCurveTo(cx - px*w*0.25, cy - py*w*0.25, bx - px*w, by - py*w); p.closePath();
+  ctx.fill(p); }
+function drawEye(ctx, R, e, st, right, dark) {
+  const w = WHO[st.who], s = right ? 1 : -1, lw = Math.max(1.2, R*0.09);
+  const blink = st.t < st.blinkUntil;
+  let top = blink ? 1 : Math.max(-0.2, Math.min(1, e.top.x));
+  const glad = st.glad.x;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  if (glad > 0.5) {
+    /* glad: the eye shuts into a happy arc */
+    ctx.strokeStyle = dark ? "#f4f3f1" : INK; ctx.lineWidth = lw*1.8; ctx.beginPath();
+    ctx.arc(0, R*0.35, R*0.72, Math.PI*1.12, Math.PI*1.88); ctx.stroke();
+    if (w.lashes) { ctx.fillStyle = dark ? "#f4f3f1" : INK; ctx.save(); ctx.translate(0, R*0.35);
+      [0.78, 1.04].forEach((a, i) => lash(ctx, R*0.72, a, R*(0.3 - i*0.05), lw*0.9, s)); ctx.restore(); }
+    return; }
+  const ball = new Path2D(); ball.arc(0, 0, R, 0, Math.PI*2);
+  ctx.fillStyle = "#fff"; ctx.fill(ball);
+  ctx.save(); ctx.clip(ball);
+  /* the pupil (a heart when in love, a spiral when dizzy) moves; the white spots stay where the light is */
+  const gx = st.gx.x*R*0.34, gy = st.gy.x*R*0.3, pr = R*w.pupil*e.pup.x;
+  if (st.spiral.x > 0.05) {
+    ctx.strokeStyle = INK; ctx.lineWidth = lw*1.1; ctx.globalAlpha = Math.min(1, st.spiral.x); ctx.beginPath();
+    for (let k = 0; k <= 60; k++) { const q = k/60, a = st.t*8*s + q*Math.PI*5, rr = R*0.78*q; const x = Math.cos(a)*rr, y = Math.sin(a)*rr; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  } else if (st.heart.x > 0.03) {
+    ctx.save(); ctx.translate(gx*0.3, gy*0.3 + R*0.04); const hw = R*0.72*st.heart.x;
+    ctx.fillStyle = RED; ctx.fill(heartPath(hw)); ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath(); ctx.ellipse(-hw*0.45, -hw*0.3, hw*0.2, hw*0.14, -0.6, 0, Math.PI*2); ctx.fill(); ctx.restore();
+  } else {
+    if (w.ring) { const g = ctx.createRadialGradient(gx, gy, pr*0.9, gx, gy, pr*1.22);
+      g.addColorStop(0, w.ring[0]); g.addColorStop(1, w.ring[1]);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(gx + R*0.03, gy + R*0.04, pr*1.2, 0, Math.PI*2); ctx.fill(); }
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(gx - R*0.02, gy - R*0.02, pr, 0, Math.PI*2); ctx.fill();
+    /* the spots: on the pupil only, where the light falls */
+    ctx.save(); ctx.beginPath(); ctx.arc(gx - R*0.02, gy - R*0.02, pr*1.2, 0, Math.PI*2); ctx.clip(); ctx.fillStyle = "#fff";
+    const big = w.ring ? 0.3 : 0.2;
+    ctx.beginPath(); ctx.ellipse(-R*0.26 + gx*0.25, -R*0.28 + gy*0.25, R*big, R*big*0.82, -0.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(R*0.2 + gx*0.25, R*0.24 + gy*0.25, R*(w.ring ? 0.1 : 0.075), 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  /* lids: the ball's own white, with a black edge */
+  const N = 24, xs = [...Array(N + 1)].map((_, i) => -R*1.05 + 2.1*R*i/N);
+  if (top > -0.1) {
+    const up = new Path2D(); up.moveTo(-R*1.1, -R*1.2);
+    xs.forEach(x => up.lineTo(x, lidY(R, top, e.tilt.x, x, right))); up.lineTo(R*1.1, -R*1.2); up.closePath();
+    ctx.fillStyle = "#fff"; ctx.fill(up);
+    ctx.strokeStyle = INK; ctx.lineWidth = lw*1.15; ctx.beginPath();
+    xs.forEach((x, i) => { const y = lidY(R, top, e.tilt.x, x, right); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); }
+  if (e.bot.x > 0.02) {
+    const yB = R - e.bot.x*2*R, lo = new Path2D(); lo.moveTo(-R*1.1, R*1.2);
+    xs.forEach(x => lo.lineTo(x, yB - (1 - (x/R)**2)*R*0.16)); lo.lineTo(R*1.1, R*1.2); lo.closePath();
+    ctx.fillStyle = "#fff"; ctx.fill(lo); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.beginPath();
+    xs.forEach((x, i) => { const y = yB - (1 - (x/R)**2)*R*0.16; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); }
+  ctx.restore();
+  /* the outline */
+  ctx.strokeStyle = dark ? "#000" : INK; ctx.lineWidth = lw; ctx.stroke(ball);
+  /* her lashes ride the lid: they leave the rim where the lid meets it, or higher up */
+  if (w.lashes) {
+    const yL = Math.max(-R*0.999, Math.min(R*0.999, lidY(R, top, e.tilt.x, s*R*0.9, right)));
+    const lidAng = Math.acos(-yL/R);
+    ctx.fillStyle = dark ? "#f4f3f1" : INK;
+    [0.7, 1.0, 1.3].forEach((a, i) => lash(ctx, R, Math.max(a, lidAng + i*0.28), R*(0.46 - i*0.06), lw, s));
+  }
+  if (st.tear > 0) { const y = R*0.55 + st.tear*R*1.6, x = s*R*0.7, r = R*0.16;
+    ctx.globalAlpha = Math.min(1, (1 - st.tear)*3); ctx.fillStyle = TEAR; ctx.beginPath();
+    ctx.moveTo(x, y - r*1.9); ctx.quadraticCurveTo(x + r*1.1, y - r*0.2, x, y + r); ctx.quadraticCurveTo(x - r*1.1, y - r*0.2, x, y - r*1.9); ctx.fill(); ctx.globalAlpha = 1; }
+}
+function drawFace(ctx, cx, cy, R, st, dark) {
+  const w = WHO[st.who], sq = st.squash.x*Math.cos(0);
+  ctx.save(); ctx.translate(cx, cy + R);
+  ctx.scale(1 + 0.16*st.squash.x, 1 - 0.3*st.squash.x); ctx.translate(0, -R);
+  const r = R*st.size.x, gap = R*w.gap;
+  for (let i = 0; i < 2; i++) { const right = i === 1;
+    ctx.save(); ctx.translate((right ? 1 : -1)*(r + gap/2) + st.gx.x*R*0.12, st.gy.x*R*0.08); drawEye(ctx, r, st.eyes[i], st, right, dark); ctx.restore(); }
+  ctx.restore(); }
+
+/* ---- canvases ---- */
+function cv(id, w, h) { const c = document.getElementById(id); c.width = w*DPR; c.height = h*DPR; c.style.width = w + "px"; c.style.height = h + "px"; return { c, ctx: c.getContext("2d"), w, h }; }
+const views = [
+  { ...cv("madam", 300, 190), st: S.madam, R: 52 }, { ...cv("gent", 300, 190), st: S.gentleman, R: 52 },
+  { ...cv("pillM", 180, 90), st: S.madam, R: 22, dark: true }, { ...cv("pillG", 180, 90), st: S.gentleman, R: 22, dark: true },
+  { ...cv("barM", 90, 34), st: S.madam, R: 7.5, dark: true }, { ...cv("barG", 90, 34), st: S.gentleman, R: 7.5, dark: true },
+];
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.033, (now - last)/1000); last = now;
+  for (const st of [S.madam, S.gentleman]) {
+    const w = WHO[st.who], el = st.who === "madam" ? views[0].c : views[1].c; st.t += dt;
+    if (st.scene) { st.u += dt; if (!SCENES[st.scene](st, st.u, el)) { st.scene = null; rest(st); } }
+    else {
+      if (st.t > st.nextGlance) { st.nextGlance = st.t + w.glance[0] + Math.random()*(w.glance[1] - w.glance[0]);
+        if (Math.random() < 0.5) { st.gx.t = (Math.random()*2 - 1)*0.85; st.gy.t = (Math.random()*2 - 1)*0.55; if (Math.random() < 0.4) st.blinkUntil = st.t + 0.12; }
+        else lookAt(st, el); }
+      if (st.t > st.nextBlink) { st.blinkUntil = st.t + 0.12; st.nextBlink = st.t + 2 + Math.random()*4;
+        if (st.who === "madam" && Math.random() < 0.35) { const at = st.t + 0.25; setTimeout(() => st.blinkUntil = at + 0.1, 250); } }
+    }
+    const n = 4, h = dt/n;
+    for (let j = 0; j < n; j++) {
+      st.eyes.forEach(e => { step(e.top, h, w.k, w.c); step(e.tilt, h, w.k, w.c); step(e.bot, h, w.k, w.c); step(e.pup, h, w.k*1.4, w.c); });
+      step(st.gx, h, w.k, w.c); step(st.gy, h, w.k, w.c); step(st.size, h, 300, 16); step(st.heart, h, 260, 9);
+      step(st.spiral, h, 120, 18); step(st.glad, h, 300, 30); step(st.squash, h, 196, 12);
+    }
+  }
+  for (const v of views) { const ctx = v.ctx; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, v.w, v.h); drawFace(ctx, v.w/2, v.h/2, v.R, v.st, v.dark); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => {
+  for (const st of [S.madam, S.gentleman]) { rest(st); st.scene = b.dataset.act; st.u = 0; } });
+</script>
+</body>
+</html>

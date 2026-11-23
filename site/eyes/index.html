@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>o_o</title>
+<meta name="theme-color" content="#0e0f14">
+<style>
+  html, body{ margin:0; height:100%; overflow:hidden; background:#0e0f14; overscroll-behavior:none; -webkit-tap-highlight-color:transparent; }
+  canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; user-select:none; -webkit-user-select:none; }
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="Two big googly eyes fill the screen and watch you."></canvas>
+<script>
+/* =====================================================================
+   o_o  — a probe (2026-11-16). The whole screen is a face: two googly eyes in the dark.
+   No yellow (the owner's call): his face is the dark screen itself, a closed eye is one light line.
+   No art, no text, no server: everything is drawn here.
+   What he does:
+     looks at your cursor or finger; the pupils are loose, so they overshoot and rattle
+     poke an eye: it squeezes shut. Keep poking: he gets angry, then he cries and won't look at you
+     boop between the eyes: he goes cross-eyed and blushes
+     stroke him (press and move slowly, not on an eye): he melts; this is also how he forgives you
+     shake (fast back and forth): the pupils bang about, he gets dizzy and turns green
+     leave him alone: he falls asleep; come back and he startles awake
+   On a phone (needs https, not tested yet): the pupils roll with gravity as you tilt it,
+   shaking it makes him dizzy, and dropping it terrifies him.
+   ===================================================================== */
+const cv = document.getElementById("c"), g = cv.getContext("2d");
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const sm = (a, b, v) => { const k = clamp((v - a)/(b - a), 0, 1); return k*k*(3 - 2*k); };
+const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v)*k);
+const rgb = (c, a = 1) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+const INK = "#16130a", LINE = "#f3f2ec";
+
+let W = 0, H = 0, D = 1, R = 100, CX = [0, 0], CY = 0;
+function fit(){ D = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W*D); cv.height = Math.round(H*D);
+  R = Math.min(W*.212, H*.3, 250); const gap = R*1.16; CX = [W/2 - gap, W/2 + gap]; CY = H*.45; }
+addEventListener("resize", fit); fit();
+
+/* ---------- him ---------- */
+const mkEye = () => ({ p:[0, .2], v:[0, 0], up:0, low:0, ang:0, sq:0, sqv:0, shut:0, wide:0, sore:0, cry:0, tears:[], nextTear:0 });
+const E = [mkEye(), mkEye()];
+const M = { dizzy:0, hurt:0, happy:0, fear:0, sleep:0, cross:0, blush:0 };
+const P = { x:-1, y:-1, on:false, down:false, t:-1e9, vx:0, vy:0, speed:0, lx:0, ly:0, lt:0, rev:[], sign:0, petting:false, onEye:false };
+const G = { has:false, x:0, y:1, asked:false, lowSince:0 };
+let jump = 0, jumpV = 0, blinkAt = 1500, blinkEnd = 0, wander = { x:0, y:.2, next:0 }, sweat = null;
+
+function wake(now){ if(M.sleep > .6){ M.sleep = 0; for(const e of E) e.wide = now + 800; jumpV = -R*2.6; } }
+function poke(i, now){
+  const e = E[i], o = E[1 - i];
+  M.hurt = Math.min(1.25, M.hurt + .3); M.happy = 0; M.blush = 0;
+  e.shut = now + (M.hurt > .8 ? 1100 : 480); e.sqv += 7; e.sore = Math.min(1, e.sore + .4);
+  e.v[0] += (Math.random() - .5)*14; e.v[1] += (Math.random() - .5)*14;
+  o.wide = now + 420; jumpV += R*.9;
+  if(M.hurt >= .85){ e.cry = now + 5200; if(M.hurt >= 1.1) o.cry = now + 5200; }
+}
+function boop(now){ M.cross = now + 1500; M.blush = 1; M.happy = Math.max(M.happy, .45); jumpV -= R*1.2; for(const e of E) e.sqv -= 3; }
+
+/* ---------- the finger or the cursor ---------- */
+function seen(x, y, now){
+  const dt = Math.max(1, now - P.lt), vx = (x - P.lx)/dt*1000, vy = (y - P.ly)/dt*1000;
+  P.vx += (vx - P.vx)*.4; P.vy += (vy - P.vy)*.4; P.speed = Math.hypot(P.vx, P.vy);
+  /* shaking: the sideways motion keeps turning back on itself, fast */
+  const s = Math.abs(vx) > 700 ? Math.sign(vx) : 0;
+  if(s && s !== P.sign){ if(P.sign) P.rev.push(now); P.sign = s; }
+  P.rev = P.rev.filter(t => now - t < 900);
+  if(P.rev.length >= 4){ M.dizzy = Math.min(1.7, M.dizzy + .07); for(const e of E){ e.v[0] += vx*.004; e.v[1] += (Math.random() - .5)*6; } }
+  P.x = x; P.y = y; P.lx = x; P.ly = y; P.lt = now; P.t = now; P.on = true; wake(now);
+}
+const eyeAt = (x, y) => E.findIndex((e, i) => Math.hypot(x - CX[i], y - CY) < R*1.04);
+cv.addEventListener("pointerdown", e => { const now = performance.now();
+  if(e.pointerType === "touch") askMotion();
+  P.lx = e.clientX; P.ly = e.clientY; P.lt = now; seen(e.clientX, e.clientY, now); P.down = true; P.petting = false;
+  try { cv.setPointerCapture(e.pointerId); } catch(err){}
+  const i = eyeAt(e.clientX, e.clientY); P.onEye = i >= 0;
+  if(i >= 0) poke(i, now);
+  else if(Math.hypot(e.clientX - W/2, e.clientY - (CY + R*.45)) < R*.62) boop(now);
+});
+cv.addEventListener("pointermove", e => { const now = performance.now(); seen(e.clientX, e.clientY, now);
+  /* a slow press-and-move that did not start on an eye is a stroke */
+  if(P.down && !P.onEye && P.speed > 30 && P.speed < 1100) P.petting = true; });
+const up = () => { P.down = false; P.petting = false; };
+cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+cv.addEventListener("pointerleave", e => { if(e.pointerType === "mouse") P.on = false; });
+addEventListener("blur", () => { P.on = false; });
+
+/* ---------- a phone in the hand: gravity, shaking, falling ---------- */
+function askMotion(){ if(G.asked) return; G.asked = true;
+  const go = () => {
+    addEventListener("deviceorientation", e => { if(e.beta == null || e.gamma == null) return; G.has = true;
+      const b = e.beta*Math.PI/180, c = e.gamma*Math.PI/180, x = Math.sin(c)*Math.cos(b), y = Math.sin(b);
+      const a = ((screen.orientation && screen.orientation.angle) || 0)*Math.PI/180;
+      G.x = x*Math.cos(a) + y*Math.sin(a); G.y = -x*Math.sin(a) + y*Math.cos(a); });
+    addEventListener("devicemotion", e => { const now = performance.now(), a = e.acceleration, ag = e.accelerationIncludingGravity;
+      if(a && a.x != null){ const m = Math.hypot(a.x, a.y, a.z);
+        if(m > 9){ M.dizzy = Math.min(1.7, M.dizzy + m*.004); wake(now); P.t = now;
+          for(const q of E){ q.v[0] += -a.x*.5 + (Math.random() - .5)*3; q.v[1] += a.y*.5 + (Math.random() - .5)*3; } } }
+      if(ag && ag.x != null){ const m = Math.hypot(ag.x, ag.y, ag.z);
+        if(m < 2.6){ if(!G.lowSince) G.lowSince = now; if(now - G.lowSince > 90){ M.fear = 1; wake(now); P.t = now; } } else G.lowSince = 0; } });
+  };
+  try {
+    const DM = window.DeviceMotionEvent, DO = window.DeviceOrientationEvent;
+    if(DM && DM.requestPermission){ Promise.all([DM.requestPermission(), DO && DO.requestPermission ? DO.requestPermission() : "granted"])
+      .then(r => { if(r[0] === "granted") go(); }).catch(() => {}); }
+    else go();
+  } catch(err){}
+}
+
+/* ---------- colours: his skin is the screen ---------- */
+const SKIN = [14, 15, 20], SICK = [14, 46, 26], ANGRY = [62, 20, 12], PALE = [24, 30, 52], DOZE = [6, 6, 10];
+function skin(){ let c = SKIN;
+  c = mix(c, DOZE, M.sleep*.8); c = mix(c, ANGRY, sm(.3, .8, M.hurt)*(1 - sm(.85, 1.05, M.hurt))*.9);
+  c = mix(c, SICK, sm(.5, 1.2, M.dizzy)); c = mix(c, PALE, M.fear); return c; }
+let themeAt = 0;
+
+/* ---------- drawing ---------- */
+function drawEye(i, now, t, col){
+  const e = E[i], x = CX[i], y = CY + jump, wide = now < e.wide || M.fear > .3, r = R*(wide ? 1.07 : 1);
+  const shut = now < e.shut, blink = now < blinkEnd, asleep = M.sleep > .93, joy = M.happy > .82 && !shut;
+  g.save(); g.translate(x, y); g.scale(1 + e.sq*.45, 1 - e.sq*.8);
+  /* its shadow on his skin */
+  const lid = col, edge = rgb(mix(col, [255, 255, 255], .3));
+  if(shut || blink || asleep || joy){
+    /* closed: the eye is gone into the dark, one light line is left */
+    g.strokeStyle = LINE; g.lineWidth = r*.1; g.lineCap = "round"; g.lineJoin = "round"; g.beginPath();
+    if(shut){ const s = i ? -1 : 1; g.moveTo(-s*r*.5, -r*.3); g.lineTo(s*r*.3, 0); g.lineTo(-s*r*.5, r*.3); }      /* > < */
+    else if(joy){ g.moveTo(-r*.55, r*.12); g.quadraticCurveTo(0, -r*.5, r*.55, r*.12); }                          /* ^ ^ */
+    else { const k = asleep ? .3 : .16; g.moveTo(-r*.55, 0); g.quadraticCurveTo(0, r*k*2, r*.55, 0); }            /* asleep or a blink */
+    g.stroke(); g.restore(); return;
+  }
+  { const s = g.createRadialGradient(0, 0, r*.9, 0, 0, r*1.3); s.addColorStop(0, "rgba(255,255,255,.13)"); s.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = s; g.beginPath(); g.arc(0, 0, r*1.3, 0, 7); g.fill(); }
+  /* the white, a little pink when it has been poked */
+  const wg = g.createRadialGradient(-r*.2, -r*.25, r*.1, 0, 0, r);
+  wg.addColorStop(0, "#ffffff"); wg.addColorStop(.75, rgb(mix([246, 247, 244], [255, 196, 190], e.sore*.8))); wg.addColorStop(1, rgb(mix([214, 219, 226], [240, 150, 150], e.sore*.8)));
+  g.fillStyle = wg; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fill();
+  g.save(); g.beginPath(); g.arc(0, 0, r*.985, 0, 7); g.clip();
+  const dz = sm(.55, .9, M.dizzy), pr = r*(wide ? .24 : .4 + .08*M.happy), px = e.p[0]*r, py = e.p[1]*r;
+  if(dz < 1){
+    /* the loose pupil, with the shadow it throws on the white */
+    g.globalAlpha = 1 - dz;
+    g.fillStyle = "rgba(0,0,0,.16)"; g.beginPath(); g.arc(px + r*.03, py + r*.06, pr*1.03, 0, 7); g.fill();
+    const pg = g.createRadialGradient(px - pr*.3, py - pr*.35, pr*.05, px, py, pr); pg.addColorStop(0, "#3a3a40"); pg.addColorStop(.5, "#101012"); pg.addColorStop(1, "#000");
+    g.fillStyle = pg; g.beginPath(); g.arc(px, py, pr, 0, 7); g.fill();
+    g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.ellipse(px - pr*.32, py - pr*.38, pr*.2, pr*.13, -.6, 0, 7); g.fill();
+    g.globalAlpha = 1;
+  }
+  if(dz > 0){
+    /* dizzy: a spiral that turns */
+    g.globalAlpha = dz; g.strokeStyle = INK; g.lineWidth = r*.085; g.lineCap = "round"; g.beginPath();
+    const a0 = t*7*(i ? -1 : 1);
+    for(let k = 0; k <= 60; k++){ const q = k/60, a = a0 + q*Math.PI*5.2, rr = r*.72*q; g.lineTo(Math.cos(a)*rr, Math.sin(a)*rr); }
+    g.stroke(); g.globalAlpha = 1;
+  }
+  /* lids: his skin coming over the eye. The upper one can slant (angry, sorry); the lower one rises with a smile */
+  if(e.up > .01){ g.save(); g.rotate(e.ang); const yy = -r*1.16 + r*2.2*e.up;
+    g.fillStyle = rgb(lid); g.fillRect(-r*2, -r*3, r*4, r*3 + yy);
+    g.strokeStyle = edge; g.lineWidth = r*.05; g.beginPath(); g.moveTo(-r*2, yy); g.lineTo(r*2, yy); g.stroke(); g.restore(); }
+  if(e.low > .01){ const yy = r*1.25 - r*1.5*e.low;
+    g.fillStyle = rgb(lid); g.beginPath(); g.ellipse(0, yy + r*1.5, r*1.7, r*1.5, 0, 0, 7); g.fill();
+    g.strokeStyle = edge; g.lineWidth = r*.05; g.beginPath(); g.ellipse(0, yy + r*1.5, r*1.7, r*1.5, 0, Math.PI*1.2, Math.PI*1.8); g.stroke(); }
+  /* the clear dome: darker toward the rim, one soft highlight */
+  const dg = g.createRadialGradient(0, 0, r*.72, 0, 0, r); dg.addColorStop(0, "rgba(20,30,50,0)"); dg.addColorStop(1, "rgba(20,30,50,.17)");
+  g.fillStyle = dg; g.fillRect(-r, -r, r*2, r*2);
+  g.fillStyle = "rgba(255,255,255,.62)"; g.beginPath(); g.ellipse(-r*.4, -r*.52, r*.3, r*.13, -.62, 0, 7); g.fill();
+  g.fillStyle = "rgba(255,255,255,.2)"; g.beginPath(); g.ellipse(r*.5, r*.62, r*.2, r*.06, -.7, 0, 7); g.fill();
+  g.restore();
+  g.strokeStyle = "rgba(255,255,255,.16)"; g.lineWidth = r*.03; g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke();
+  g.restore();
+}
+function drop(x, y, r, a){ g.save(); g.globalAlpha = a; g.translate(x, y);
+  const dgr = g.createLinearGradient(0, -r*1.6, 0, r); dgr.addColorStop(0, "#bfe7ff"); dgr.addColorStop(1, "#4fb3f6");
+  g.fillStyle = dgr; g.beginPath(); g.moveTo(0, -r*1.7); g.bezierCurveTo(r*.2, -r*.9, r, -r*.2, r, r*.15); g.arc(0, r*.15, r, 0, Math.PI); g.bezierCurveTo(-r, -r*.2, -r*.2, -r*.9, 0, -r*1.7); g.fill();
+  g.fillStyle = "rgba(255,255,255,.8)"; g.beginPath(); g.ellipse(-r*.35, r*.05, r*.18, r*.3, .3, 0, 7); g.fill(); g.restore(); }
+
+/* ---------- every frame ---------- */
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(.033, (now - last)/1000); last = now; const t = now/1000, idle = (now - P.t)/1000;
+  /* how he feels */
+  if(P.petting && P.down){ M.happy = Math.min(1, M.happy + dt*.9); M.blush = Math.min(1, M.blush + dt); M.hurt = Math.max(0, M.hurt - dt*.45); for(const e of E){ e.sore = Math.max(0, e.sore - dt*.3); if(M.hurt < .7) e.cry = 0; } }
+  else M.happy = Math.max(0, M.happy - dt*.4);
+  M.blush = Math.max(0, M.blush - dt*.3);
+  M.dizzy = Math.max(0, M.dizzy - dt*(M.dizzy > 1 ? .45 : .2));
+  M.hurt = Math.max(0, M.hurt - dt*.05);
+  M.fear = Math.max(0, M.fear - dt*.9);
+  const dizzy = sm(.55, .9, M.dizzy), anger = sm(.25, .6, M.hurt)*(1 - sm(.82, 1, M.hurt)), sorry = sm(.82, 1, M.hurt);
+  const drowsy = idle > 9 && M.hurt < .3 && M.dizzy < .2 && M.fear < .1 ? 1 : 0;
+  M.sleep = clamp(M.sleep + (drowsy ? dt*.28 : -dt*6), 0, 1);
+  if(now > blinkAt){ blinkEnd = now + 130; blinkAt = now + 1800 + Math.random()*4200; }
+  if(now > wander.next){ const a = Math.random()*6.28, k = Math.random()*.7; wander = { x:Math.cos(a)*k, y:Math.sin(a)*k*.6 + .1, next:now + 900 + Math.random()*2400 }; }
+  jumpV += (-90*jump - 11*jumpV)*dt; jump += jumpV*dt;
+  const wideAll = M.fear > .3;
+
+  for(let i = 0; i < 2; i++){ const e = E[i], wide = now < e.wide || wideAll;
+    const pr = wide ? .24 : .4 + .08*M.happy, L = 1 - pr - .04;
+    /* where he wants to look */
+    let tx, ty;
+    if(dizzy > .5){ const a = t*8*(i ? -1 : 1) + i*2; tx = Math.cos(a)*L; ty = Math.sin(a)*L; }
+    else if(now < M.cross){ tx = (i ? -1 : 1)*L*.9; ty = L*.2; }
+    else if(M.sleep > .4){ tx = 0; ty = L*.7; }
+    else if(P.on && idle < 4.5){ const dx = P.x - CX[i], dy = P.y - CY, d = Math.hypot(dx, dy) || 1, k = Math.min(1, d/(R*2.2));
+      tx = dx/d*k*L; ty = dy/d*k*L;
+      if(sorry > .5){ tx = -tx*.85; ty = L*.55; } }        /* hurt: he looks away from you, at the floor */
+    else { tx = wander.x*L; ty = wander.y*L; }
+    /* a loose pupil: a weak spring toward where he looks, gravity when the phone tilts, and the rim */
+    const K = G.has && !P.down ? 16 : 85, C = G.has ? 3 : 7.5;
+    e.v[0] += (K*(tx - e.p[0]) - C*e.v[0] + (G.has ? G.x*46 : 0))*dt; e.v[1] += (K*(ty - e.p[1]) - C*e.v[1] + (G.has ? G.y*46 : 0))*dt;
+    e.p[0] += e.v[0]*dt; e.p[1] += e.v[1]*dt;
+    const d = Math.hypot(e.p[0], e.p[1]);
+    if(d > L){ const nx = e.p[0]/d, ny = e.p[1]/d, vn = e.v[0]*nx + e.v[1]*ny; e.p[0] = nx*L; e.p[1] = ny*L;
+      if(vn > 0){ e.v[0] -= 1.5*vn*nx; e.v[1] -= 1.5*vn*ny; if(vn > 3){ e.sqv += Math.min(2, vn*.12); M.dizzy = Math.min(1.7, M.dizzy + vn*.004); } } }
+    /* lids */
+    let upT = 0, lowT = 0, angT = 0;
+    upT = Math.max(upT, M.sleep*.95, anger*.42, sorry*.34, dizzy*(i ? .2 : .42), e.sore*.3);
+    angT = (i ? -1 : 1)*(anger*.5 - sorry*.42);
+    lowT = Math.max(M.happy*.62, sorry*.15); upT = Math.max(upT, M.happy*.2);
+    if(wide){ upT = 0; lowT = 0; angT = 0; }
+    const k = Math.min(1, dt*16); e.up += (upT - e.up)*k; e.low += (lowT - e.low)*k; e.ang += (angT - e.ang)*k;
+    e.sqv += (-120*e.sq - 12*e.sqv)*dt; e.sq = clamp(e.sq + e.sqv*dt, -.25, .4);
+    e.sore = Math.max(0, e.sore - dt*.05);
+    /* tears */
+    if(now < e.cry && now > e.nextTear && now > e.shut){ e.nextTear = now + 700 + Math.random()*500; e.tears.push({ x:CX[i] + (Math.random() - .5)*R*.7, y:CY + R*.9, vy:R*.2, r:R*.02, a:1 }); }
+    for(let j = e.tears.length - 1; j >= 0; j--){ const q = e.tears[j];
+      if(q.r < R*.13) q.r += dt*R*.16; else { q.vy += R*7*dt; q.y += q.vy*dt; }
+      if(q.y > H + R){ e.tears.splice(j, 1); } }
+  }
+  /* a drop of sweat when he is scared */
+  if(M.fear > .5 && !sweat) sweat = { y:0, a:1 };
+  if(sweat){ sweat.y += dt*R*.5; sweat.a -= dt*.6; if(sweat.a <= 0) sweat = null; }
+
+  /* --- draw --- */
+  const col = skin();
+  g.setTransform(D, 0, 0, D, 0, 0);
+  /* flat behind the eyes, so a lid is exactly the colour of what is round it; darker only far out */
+  const bg = g.createRadialGradient(W/2, CY, R*2.7, W/2, CY, Math.max(W, H)*.9);
+  bg.addColorStop(0, rgb(col)); bg.addColorStop(1, rgb(mix(col, [0, 0, 0], .5)));
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  if(now - themeAt > 400){ themeAt = now; const c = rgb(col); document.querySelector('meta[name="theme-color"]').content = c; document.body.style.background = c; }
+  if(M.blush > .01) for(let i = 0; i < 2; i++){ const x = CX[i] + (i ? 1 : -1)*R*.35, y = CY + jump + R*1.32;
+    const b = g.createRadialGradient(x, y, 0, x, y, R*.5); b.addColorStop(0, `rgba(255,70,110,${.5*M.blush})`); b.addColorStop(1, "rgba(255,70,110,0)");
+    g.save(); g.translate(x, y); g.scale(1, .55); g.translate(-x, -y); g.fillStyle = b; g.beginPath(); g.arc(x, y, R*.5, 0, 7); g.fill(); g.restore(); }
+  drawEye(0, now, t, col); drawEye(1, now, t, col);
+  for(const e of E) for(const q of e.tears) drop(q.x, q.y + jump, q.r, q.a);
+  if(sweat) drop(CX[1] + R*1.15, CY - R*1.0 + sweat.y, R*.11, clamp(sweat.a, 0, 1));
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.o_o = { M, E, P, G, poke, boop };
+</script>
+</body>
+</html>

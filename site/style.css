@@ -1,0 +1,159 @@
+/* Small Living Things: the shelf and its product pages.
+   One world: the dark of a screen at night, white eyes, one blue (a tear).
+   The header is a menu bar, because that is where these things live. */
+/* Lilita One for headings: he tried Gloock (2026-11-20) and found the page split into two worlds; Lilita sits with the eyes */
+@font-face{ font-family:"Lilita One"; src:url(fonts/LilitaOne-Regular.ttf) format("truetype"); font-display:swap; }
+@font-face{ font-family:"Golos Text"; font-weight:400 800; src:url(fonts/golos-latin.woff2) format("woff2"); font-display:swap; }
+:root{ --bg:#0e0f14; --raise:#15161d; --line:#272935; --text:#f2f1ec; --dim:#aeb1bd; --tear:#3991d3; --ink:#101116;
+  --display:"Lilita One", ui-rounded, system-ui, sans-serif; --body:"Golos Text", system-ui, sans-serif;
+  --col:min(1040px, 100% - 40px); color-scheme:dark; }
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; }
+body{ margin:0; background:var(--bg); color:var(--text); font:500 17px/1.55 var(--body); -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+::selection{ background:var(--tear); color:var(--ink); }
+:focus-visible{ outline:2px solid var(--tear); outline-offset:3px; border-radius:6px; }
+a{ color:inherit; text-decoration-thickness:1.5px; text-underline-offset:3px; }
+a:hover{ color:var(--tear); }
+img{ max-width:100%; height:auto; display:block; }
+
+/* the menu bar: the navigation, a clock, and him */
+.bar{ position:fixed; z-index:20; inset:0 0 auto 0; height:32px; display:flex; align-items:center; gap:18px; padding:0 14px;
+  background:rgba(22,23,31,.78); -webkit-backdrop-filter:blur(18px) saturate(1.4); backdrop-filter:blur(18px) saturate(1.4);
+  border-bottom:1px solid rgba(255,255,255,.07); font:600 13.5px/1 var(--body); white-space:nowrap; }
+.bar a{ text-decoration:none; color:var(--text); opacity:.86; padding:8px 0; }
+.bar a:hover{ opacity:1; color:var(--text); }
+.bar .home{ font-weight:800; opacity:1; }
+.bar .gap{ flex:1; }
+.bar canvas{ width:54px; height:24px; cursor:pointer; flex:none; }
+.bar time{ color:var(--text); opacity:.86; font-variant-numeric:tabular-nums; }
+@media (max-width:560px){ .bar time{ display:none; } .bar{ gap:14px; } }
+#rain{ position:fixed; z-index:19; inset:0; width:100%; height:100%; pointer-events:none; }
+
+main{ width:var(--col); margin:0 auto; padding:32px 0 0; }
+h1{ margin:0; font:400 clamp(44px, 8.4vw, 92px)/.96 var(--display); letter-spacing:.005em; text-wrap:balance; }
+h2{ margin:0 0 14px; font:400 clamp(28px, 4.2vw, 40px)/1.05 var(--display); text-wrap:balance; }
+p{ margin:0 0 14px; max-width:62ch; }
+.lead{ font-size:clamp(18px, 2.2vw, 21px); line-height:1.5; color:var(--dim); max-width:46ch; }
+.lead b{ color:var(--text); font-weight:600; }
+.dim{ color:var(--dim); }
+.small{ font-size:14.5px; line-height:1.5; color:var(--dim); }
+
+.hero{ padding:clamp(56px, 11vw, 120px) 0 clamp(40px, 7vw, 72px); }
+.hero .lead{ margin-top:22px; }
+.hint{ margin-top:26px; font-size:14.5px; color:var(--dim); }
+p, li, dd{ text-wrap:pretty; }
+
+/* the stage: a close-up of the menu bar, drawn live by stage.js */
+.hero.with-stage{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.05fr); gap:clamp(28px, 5vw, 64px); align-items:start; }
+/* the stage's top meets the top of the headline's letters */
+.hero.with-stage .stage{ margin-top:.12em; font-size:clamp(44px, 6.2vw, 78px); }
+.hero.with-stage h1{ font-size:clamp(44px, 6.2vw, 78px); }
+@media (max-width:860px){ .hero.with-stage{ grid-template-columns:1fr; } }
+.stage{ margin:0; }
+.stage canvas{ display:block; width:100%; border-radius:22px; box-shadow:0 30px 60px -30px #000; cursor:pointer; }
+.share{ display:none; font:700 15px/1 var(--body); color:var(--text); background:transparent; border:1.5px solid var(--line); border-radius:999px; padding:13px 18px; cursor:pointer; }
+.phone-note{ display:none; margin:14px 0 0; font-size:15px; color:var(--dim); }
+/* on a phone there is nothing to install: sending the link is the main thing, the zip a plain link */
+@media (hover:none) and (pointer:coarse){
+  .share{ display:inline-flex; order:-1; background:var(--text); color:var(--ink); border-color:var(--text); padding:15px 22px; font-size:17px; }
+  .hero .get .btn{ background:none; color:var(--text); box-shadow:none; padding:0; text-decoration:underline; font-weight:600; font-size:15px; }
+  .phone-note{ display:block; } }
+section.flow{ border-top:0; padding-top:0; }
+/* every section after the hero: its title on the left, its content on the right, so wide screens stay balanced */
+@media (min-width:980px){
+  section.row{ display:grid; grid-template-columns:minmax(0, 4fr) minmax(0, 8fr); column-gap:clamp(40px, 5vw, 80px); align-items:start; }
+  section.row > .head{ position:sticky; top:72px; }
+  section.row > .head h2{ font-size:clamp(28px, 3vw, 36px); }
+  section.row > .head p{ max-width:30ch; }
+  section.row .pairs{ margin-top:0; }
+  section.row ol.steps{ margin-top:0; max-width:none; }
+  section.row .who{ margin-top:0; }
+  section.row .shot{ margin-top:18px; }
+  .print .body.split{ grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); }
+  .makers dl{ margin-top:0; }
+}
+.more{ margin-top:22px; font-weight:600; color:var(--text); }
+/* the small print: what they read, peace and quiet, moving out, in one quieter band */
+.print h2{ font-size:clamp(24px, 3vw, 30px); }
+.print h3{ margin:22px 0 8px; font:700 17px/1.3 var(--body); }
+.print .split > div > h3:first-child{ margin-top:6px; }
+.print p{ font-size:16px; }
+.bye{ color:var(--text); }
+
+/* a line of System Settings, drawn so you know it when you see it */
+.settings{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin:10px 0; padding:12px 14px; border-radius:10px;
+  background:#1e1f26; border:1px solid var(--line); font:500 14px/1.35 -apple-system, BlinkMacSystemFont, var(--body); color:var(--text); max-width:520px; }
+.settings .open{ flex:none; padding:5px 12px; border-radius:6px; background:#3a3c46; font-weight:600; font-size:13px; }
+q{ quotes:none; font-style:italic; color:var(--text); }
+
+.btn{ display:inline-flex; align-items:center; gap:10px; padding:15px 24px; border-radius:999px; background:var(--text); color:var(--ink); text-decoration:none;
+  font:700 17px/1 var(--body); transition:transform .18s cubic-bezier(.16,1,.3,1), box-shadow .18s; box-shadow:0 10px 24px -12px rgba(0,0,0,.8); }
+.btn:hover{ color:var(--ink); transform:translateY(-2px); box-shadow:0 18px 30px -14px rgba(0,0,0,.9); }
+.btn:active{ transform:translateY(0) scale(.98); }
+.get{ display:flex; flex-wrap:wrap; align-items:center; gap:14px 20px; margin-top:30px; }
+
+section{ padding:clamp(40px, 7vw, 76px) 0; border-top:1px solid var(--line); }
+
+/* the shelf: each thing is a wide plate, the picture is the thing itself */
+.thing{ display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 7fr); gap:clamp(24px, 5vw, 56px); align-items:center; }
+.thing h2{ font-size:clamp(34px, 5vw, 52px); }
+.thing figure{ margin:0; }
+.thing figure img{ border-radius:22px; box-shadow:0 30px 60px -30px #000; }
+/* who makes these: two names, one line each */
+.makers dl{ margin:8px 0 0; display:grid; grid-template-columns:max-content minmax(0, 52ch); gap:14px clamp(20px, 4vw, 44px); align-items:baseline; }
+/* the names sit under the heading, in the body face, each with its mark from the footer */
+.makers dt{ display:flex; align-items:center; gap:10px; font:700 18px/1.3 var(--body); color:var(--text); }
+.makers dt svg{ flex:none; color:var(--dim); }
+.makers dd{ margin:0; color:var(--dim); }
+@media (max-width:560px){ .makers dl{ grid-template-columns:1fr; gap:4px; } .makers dd{ margin-bottom:16px; } }
+.next{ display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; color:var(--dim); }
+.next b{ font:400 26px/1 var(--display); color:var(--text); }
+@media (max-width:760px){ .thing{ grid-template-columns:1fr; } .thing figure{ order:-1; } }
+
+/* you do this, he does that */
+.pairs{ margin:22px 0 0; padding:0; display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); }
+.pairs dt, .pairs dd{ margin:0; padding:13px 0; border-top:1px solid var(--line); }
+.pairs dt{ color:var(--dim); padding-right:20px; }
+.pairs dd{ font-weight:600; }
+@media (max-width:560px){ .pairs{ grid-template-columns:1fr; } .pairs dt{ padding-bottom:0; } .pairs dd{ border-top:0; padding-top:2px; } }
+
+/* who moves in: one plate each, the moods underneath */
+h3{ margin:0 0 6px; font:400 clamp(24px, 3vw, 30px)/1.05 var(--display); }
+.who{ display:grid; grid-template-columns:minmax(0, 1fr); gap:18px; margin-top:22px; }
+.who article{ min-width:0; background:var(--raise); border:1px solid var(--line); border-radius:22px; padding:22px 22px 8px; }
+.who-head{ display:flex; gap:16px 24px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+.who-head p{ margin:0; color:var(--dim); max-width:48ch; }
+.pick{ font:700 15px/1 var(--body); padding:12px 18px; border-radius:999px; border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer;
+  transition:background .18s, color .18s, border-color .18s, transform .18s cubic-bezier(.16,1,.3,1); }
+.pick:hover{ transform:translateY(-1px); border-color:#3a3d4c; }
+.pick:active{ transform:scale(.98); }
+.pick[aria-pressed="true"]{ background:var(--text); color:var(--ink); border-color:var(--text); }
+.moods{ margin:12px -10px 0; }
+
+.split{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:clamp(24px, 5vw, 64px); align-items:start; }
+@media (max-width:760px){ .split{ grid-template-columns:1fr; } }
+.shot{ margin:26px 0 0; }
+.shot img{ border-radius:22px; }
+.shot.wide{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.shot.wide img{ min-width:760px; }
+
+ol.steps{ margin:18px 0 0; padding:0; list-style:none; counter-reset:s; max-width:64ch; }
+ol.steps li{ counter-increment:s; position:relative; padding:14px 0 14px 52px; border-top:1px solid var(--line); }
+ol.steps li::before{ content:counter(s); position:absolute; left:0; top:12px; width:34px; height:34px; border-radius:50%; background:var(--raise); border:1px solid var(--line);
+  display:grid; place-items:center; font:400 17px/1 var(--display); }
+ol.steps li b{ font-weight:700; }
+ol.steps ul{ margin:8px 0 0; padding-left:18px; color:var(--dim); }
+ol.steps ul li{ counter-increment:none; padding:3px 0; border:0; }
+ol.steps ul li::before{ display:none; }
+kbd{ font:600 .88em/1 var(--body); padding:2px 7px; border-radius:6px; background:var(--raise); border:1px solid var(--line); white-space:nowrap; }
+
+/* the makers' marks in the footer: say their names on hover, focus or a tap */
+.made{ display:inline-flex; align-items:center; gap:6px; scroll-margin-bottom:40px; }
+.made > span:first-child{ margin-right:4px; }
+.maker{ position:relative; display:inline-grid; place-items:center; width:34px; height:34px; border-radius:9px; color:var(--dim); cursor:default; outline-offset:2px; transition:color .15s, background .15s; }
+.maker:hover, .maker:focus-visible, .maker.on{ color:var(--text); background:rgba(255,255,255,.06); }
+.maker .tip{ position:absolute; bottom:calc(100% + 6px); left:50%; transform:translate(-50%, 4px); opacity:0; pointer-events:none; white-space:nowrap;
+  padding:6px 9px; border-radius:7px; background:#25262e; color:var(--text); font:600 12.5px/1 var(--body); transition:opacity .15s, transform .15s; }
+.maker:hover .tip, .maker:focus-visible .tip, .maker.on .tip{ opacity:1; transform:translate(-50%, 0); }
+footer{ width:var(--col); margin:0 auto; padding:34px 0 60px; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:8px 24px; justify-content:space-between; align-items:center; }
+@media (prefers-reduced-motion: reduce){ html{ scroll-behavior:auto; } .btn, .pick{ transition:none; } }

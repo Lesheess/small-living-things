@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Island lab</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #0e0f14; color: #d9dadf; font: 500 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  .wrap { padding: 24px 16px 40px; display: grid; gap: 18px; justify-items: center; }
+  canvas#screen { display: block; border-radius: 14px; box-shadow: 0 30px 60px -30px #000; max-width: 100%; }
+  .ctl { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button { font: inherit; color: #e8e9ee; background: #2c2f37; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+  button[aria-pressed=true] { background: #e8e9ee; color: #111; }
+  .note { color: #8b8d96; font-size: 13px; text-align: center; max-width: 70ch; }
+  canvas[data-roomie] { position: absolute; left: -999px; width: 54px; height: 24px; }
+  #rain { display: none; }
+</style>
+</head>
+<body>
+<canvas data-roomie></canvas><canvas id="rain"></canvas>
+<div class="wrap">
+  <canvas id="screen"></canvas>
+  <div class="ctl">
+    <button data-mode="tele" aria-pressed="true">Teleport</button>
+    <button data-mode="now" aria-pressed="false">Like now</button>
+    <span style="width:14px"></span>
+    <button data-who="madam">Madam</button>
+    <button data-who="gentleman">Gentleman</button>
+    <span style="width:14px"></span>
+    <button id="go">▶ Again</button>
+  </div>
+  <p class="note">Real size: the notch is 208 × 37 points, the eyes in the bar 16 points tall. It plays by itself every few seconds; click the card to answer it. In the app, the moment the card opens also gives a light tap on the trackpad.</p>
+</div>
+<script src="../../site/roomie.js"></script>
+<script>
+/* The island, two ways. Teleport: the eyes swell a touch, squeeze flat and vanish from the bar with a little sparkle,
+   and pop out inside the card as it springs open; when it folds they squeeze out of it first and pop back home.
+   Like now: the card springs out with the face already in it. Same springs as the app (k 230, c 23). */
+const R = window.Roomie, cv = document.getElementById("screen"), g = cv.getContext("2d"), D = Math.min(2, devicePixelRatio || 1);
+const W = Math.min(1100, innerWidth - 32), H = 250, BAR = 37, NOTCH = { w: 208, h: 37 }, CARD_W = 344;
+cv.width = W*D; cv.height = H*D; cv.style.width = W + "px"; cv.style.height = H + "px";
+const NX = W/2, HOME = { x: W - 150, y: BAR/2 }, ER = 7.6;
+const LINES = { madam: ["Darling, your eyes. Look at something far away for twenty seconds. I'll count.", "Half an hour in that chair. Up you get: walk for five minutes."],
+                gentleman: ["Twenty minutes, if I may. Kindly look at something twenty feet away. I shall count.", "Might I suggest a stroll? Five minutes. I shall hold the fort."] };
+let mode = "tele", mouse = { x: W*0.6, y: 180 };
+cv.addEventListener("pointermove", e => { const b = cv.getBoundingClientRect(); mouse = { x: (e.clientX - b.left)*W/b.width, y: (e.clientY - b.top)*H/b.height }; });
+
+const sp = v => ({ x: v, v: 0, t: v });
+function step(s, dt, k, c){ s.v += (k*(s.t - s.x) - c*s.v)*dt; s.x += s.v*dt; }
+const isl = { w: sp(NOTCH.w), h: sp(NOTCH.h) }, face = { x: sp(NX), y: sp(BAR*0.5), r: sp(ER) };
+let textA = 0, line = 0, scene = null, t0 = 0, nextAt = performance.now()/1000 + 1.2, closeAt = 0;
+const sparks = [];   /* little stars where they vanish and where they appear */
+
+function shape(w, h){ const x = NX - w/2, f = 6, r = Math.min(h/2, 9 + Math.max(0, h - NOTCH.h)*0.4, 30);
+  g.beginPath(); g.moveTo(x - f, 0); g.arcTo(x, 0, x, f, f); g.arcTo(x, h, x + w/2, h, r); g.arcTo(x + w, h, x + w, 0, r); g.arcTo(x + w, 0, x + w + f, 0, f); g.closePath(); }
+function wrap(text, width){ g.font = "600 15px -apple-system, BlinkMacSystemFont, sans-serif"; const out = []; let cur = "";
+  for(const w of text.split(" ")){ const t = cur ? cur + " " + w : w; if(g.measureText(t).width > width && cur){ out.push(cur); cur = w; } else cur = t; } if(cur) out.push(cur); return out; }
+function lookAt(cx, cy, tx, ty){ const base = R.look; if(!base) return null; const dx = tx - cx, dy = ty - cy, d = Math.hypot(dx, dy) || 1, k = Math.min(1, d/260)*.68;
+  const eye = e => e.closed || e.spiral > .5 ? e : Object.assign({}, e, { px: dx/d*k, py: dy/d*k, heart: 0 });
+  return Object.assign({}, base, { l: eye(base.l), r: eye(base.r), tear: null, sweat: null, squash: 0 }); }
+function star(x, y, r, a, col){ if(r <= .2) return; g.save(); g.translate(x, y); g.globalAlpha = a; g.fillStyle = col; const k = r*.16; g.beginPath(); g.moveTo(0, -r);
+  g.quadraticCurveTo(k, -k, r, 0); g.quadraticCurveTo(k, k, 0, r); g.quadraticCurveTo(-k, k, -r, 0); g.quadraticCurveTo(-k, -k, 0, -r); g.fill(); g.restore(); }
+function puff(x, y, at){ for(let i = 0; i < 4; i++) sparks.push({ x, y, at: at + i*.03, a: i*Math.PI/2 + .4, col: ["#ffffff", "#8f80ea", "#cd6766", "#ffffff"][i] }); }
+/* a pop: 0 → 1 with a springy overshoot (in), or 1 → 0 squeezing flat and wide (out) */
+const popIn = u => u <= 0 ? 0 : u >= 1 ? 1 : 1 - Math.exp(-6*u)*Math.cos(9*u);
+
+function layout(){ const lines = wrap(LINES[R.who][line], CARD_W - 16 - 60 - 12 - 16), row = Math.max(44, lines.length*20);
+  return { lines, faceY: NOTCH.h + 16 + row/2, row, h: 16 + row + 16 + 30 }; }
+/* one movement, overlapped: they swell a touch and squeeze out of the bar while the card is already starting to grow,
+   and pop out in it as it opens; on folding they squeeze out of the card first, the card folds, and they pop back home */
+const HOLD = 4.6;
+const ease3 = u => u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3)/2;
+function start(){ scene = { mode }; t0 = performance.now()/1000; line = (line + 1) % 2; closeAt = 0; textA = 0;
+  const L = layout(); face.x.x = face.x.t = NX - CARD_W/2 + 46; face.y.x = face.y.t = L.faceY; face.r.x = face.r.t = 13;
+  if(mode === "tele") puff(HOME.x, HOME.y, t0 + .14); }
+
+function frame(now){
+  now /= 1000; const dt = Math.min(.033, now - (frame.last || now)); frame.last = now;
+  if(!scene && now > nextAt) start();
+  const L = layout(), u = scene ? now - t0 : 0, tele = scene && scene.mode === "tele";
+  const tFold = closeAt ? closeAt - t0 : HOLD + .5;
+  let open = false, homeScale = 1, homeSquash = 0, islScale = 0;
+  if(scene){
+    open = u >= .05 && u < tFold + .07;
+    if(tele){
+      /* leaving the bar: a little swell (anticipation), then flat and wide, gone */
+      if(u < .07){ homeScale = 1 + .1*ease3(u/.07); }
+      else if(u < .19){ const k = ease3((u - .07)/.12); homeScale = 1.1*(1 - k); homeSquash = k; }
+      else homeScale = 0;
+      /* coming home after the card folds */
+      if(u >= tFold + .17){ homeScale = popIn((u - tFold - .17)/.5); homeSquash = 0; if(!scene.home){ scene.home = true; puff(HOME.x, HOME.y, now); } }
+    }
+    /* in the card: they pop out as it grows, and squeeze out first when it folds */
+    islScale = tele ? popIn((u - .15)/.5) : Math.min(1, Math.max(0, (u - .2)/.25));
+    if(u >= tFold){ const k = Math.min(1, (u - tFold)/.12); islScale *= 1 - ease3(k); }
+    if(u > tFold + (tele ? 1.0 : .6)){ scene = null; nextAt = now + 2.6; }
+  }
+  isl.w.t = open ? CARD_W : NOTCH.w; isl.h.t = open ? NOTCH.h + L.h : NOTCH.h;
+  for(let i = 0; i < 4; i++){ const h = dt/4; step(isl.w, h, 230, 23); step(isl.h, h, 230, 23); step(face.x, h, 260, 24); step(face.y, h, 260, 24); step(face.r, h, 260, 24); }
+  const near = open && Math.abs(isl.h.x - isl.h.t) < 12; textA = near ? Math.min(1, textA + dt*7) : Math.max(0, textA - dt*14);
+
+  g.setTransform(D, 0, 0, D, 0, 0); g.clearRect(0, 0, W, H);
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#2b2f57"); bg.addColorStop(1, "#171827"); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const gl = g.createRadialGradient(W*.75, H, 10, W*.75, H, W*.6); gl.addColorStop(0, "rgba(120,100,230,.35)"); gl.addColorStop(1, "rgba(120,100,230,0)"); g.fillStyle = gl; g.fillRect(0, 0, W, H);
+  g.fillStyle = "rgba(14,15,24,.5)"; g.fillRect(0, 0, W, BAR);
+  g.fillStyle = "rgba(255,255,255,.85)"; g.font = "600 14px -apple-system, sans-serif"; g.textBaseline = "middle"; g.fillText("Finder", 46, BAR/2);
+  g.font = "500 14px -apple-system, sans-serif"; g.fillStyle = "rgba(255,255,255,.72)"; ["File", "Edit", "View", "Go"].forEach((w, i) => g.fillText(w, 108 + i*50, BAR/2));
+  g.textAlign = "right"; g.fillStyle = "rgba(255,255,255,.85)"; g.fillText(new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), W - 20, BAR/2);
+  g.strokeStyle = "rgba(255,255,255,.8)"; g.lineWidth = 1.5; g.strokeRect(W - 108, BAR/2 - 5, 20, 10); g.fillStyle = "rgba(255,255,255,.8)"; g.fillRect(W - 106, BAR/2 - 3, 13, 6);
+  g.beginPath(); g.arc(W - 125, BAR/2 + 5, 9, -Math.PI*.78, -Math.PI*.22); g.stroke(); g.beginPath(); g.arc(W - 125, BAR/2 + 5, 4.5, -Math.PI*.78, -Math.PI*.22); g.stroke();
+  g.textAlign = "left";
+  g.fillStyle = "#000"; shape(isl.w.x, isl.h.x); g.fill();
+  /* at home in the bar: squeezing flat and wide as they go, springing up as they come back */
+  if(homeScale > .01){ const lk = lookAt(HOME.x, HOME.y, mouse.x, mouse.y); if(lk){ g.save(); g.translate(HOME.x, HOME.y);
+    const sy = homeScale*(1 - .85*homeSquash), sx = homeScale + .5*homeSquash; g.scale(Math.max(.01, sx), Math.max(.01, sy)); g.translate(-HOME.x, -HOME.y); R.drawFace(g, HOME.x, HOME.y, ER, lk); g.restore(); } }
+  /* in the island */
+  if(islScale > .01){ const fx = face.x.x, fy = face.y.x, lk = open ? lookAt(fx, fy, fx + 200, fy + 20) : lookAt(fx, fy, mouse.x, mouse.y);
+    if(lk){ g.save(); shape(isl.w.x, isl.h.x); g.clip(); g.translate(fx, fy); g.scale(islScale, islScale); g.translate(-fx, -fy); R.drawFace(g, fx, fy, face.r.x, lk); g.restore(); } }
+  /* sparkles */
+  for(let i = sparks.length - 1; i >= 0; i--){ const s = sparks[i], k = (now - s.at)/.5; if(k > 1){ sparks.splice(i, 1); continue; } if(k < 0) continue;
+    const d = 6 + 10*popIn(k); star(s.x + Math.cos(s.a)*d, s.y + Math.sin(s.a)*d*.7, 3.2*(1 - k), 1 - k, s.col); }
+  if(textA > .01){ g.globalAlpha = textA; const x0 = NX - CARD_W/2 + 16 + 60 + 12;
+    g.fillStyle = "#fff"; g.font = "600 15px -apple-system, BlinkMacSystemFont, sans-serif";
+    const ty = NOTCH.h + 16 + (L.row - L.lines.length*20)/2 + 10; L.lines.forEach((l, i) => g.fillText(l, x0, ty + i*20));
+    const by = NOTCH.h + 16 + L.row + 10, bw = (CARD_W - 32 - 10)/2;
+    [["Okay", "#fff", "#000"], ["Later", "#2b2d33", "#fff"]].forEach(([t, bgc, fc], i) => { const bx = NX - CARD_W/2 + 16 + i*(bw + 10);
+      g.beginPath(); g.roundRect(bx, by, bw, 26, 13); g.fillStyle = bgc; g.fill(); g.fillStyle = fc; g.font = "700 13px -apple-system, sans-serif"; g.textAlign = "center"; g.fillText(t, bx + bw/2, by + 13); g.textAlign = "left"; });
+    g.globalAlpha = 1; }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+/* a click on the card answers it: it folds now */
+cv.addEventListener("click", () => { if(scene && !closeAt && !scene.back) closeAt = performance.now()/1000; });
+document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { mode = b.dataset.mode; document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-pressed", x === b)); if(!scene) start(); });
+document.getElementById("go").onclick = () => { if(!scene) start(); };
+</script>
+</body>
+</html>
