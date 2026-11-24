@@ -28,6 +28,7 @@ import AppKit
 import IOKit.ps
 import ServiceManagement
 import CoreAudio
+import AVFoundation
 
 // MARK: - who
 
@@ -1341,6 +1342,138 @@ if let i = args.firstIndex(of: "--og"), i + 1 < args.count {
     drawText(g, attributed("Madam or the Gentleman. Free, for your Mac.", 28, .semibold, NSColor(white: 1, alpha: 0.7), center: true), in: CGRect(x: 0, y: 500, width: W, height: 40)) }
   writePNG(img, args[i + 1]); exit(0)
 }
+if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
+  /* the film for the launch, drawn by the app itself frame by frame: a close-up of a MacBook's menu bar, the walk nudge
+     teleporting out of the bar into the notch, "Going" clicked, two minutes later the roommate catches you, and an end card.
+     1920×1080, 30 fps, H.264. Usage: Roomie --video out.mp4 [madam|gentleman] */
+  let who: Who = args.count > i + 2 && args[i + 2] == "gentleman" ? .gentleman : .madam
+  let PW = 1920, PH = 1080, FPS = 30.0, S: CGFloat = 2.6, SW = CGFloat(PW)/S, SH = CGFloat(PH)/S
+  let notch = CGSize(width: 208, height: 37.5), NX = SW/2, HOME = CGPoint(x: NX + 104 + 64, y: notch.height/2), DUR = 19.5
+  let card = Card(kind: .move, text: who == .madam ? "Half an hour in that chair. Up you get: walk for five minutes." : "Thirty minutes seated. A five-minute walk would do you credit.", buttons: ["Going", "Later"])
+  let goLine = who == .madam ? "Off you go. I'll be here." : "Very good. Take your time."
+  let caughtLine = who == .madam ? "Going, you said. Darling, I can see you." : "A remarkably brief stroll, if I may say so."
+  /* the scenes: what the island shows from when */
+  let tOpen = 1.6, tClick = 3.9, tMsg = 4.0, tFold1 = 6.6, tCaught = 9.0, tFold2 = 16.0, tEnd = 16.7
+  func phaseAt(_ t: Double) -> (Phase, Double) {
+    if t >= tCaught && t < tFold2 { return (.caught, tCaught) }
+    if t >= tMsg && t < tFold1 { return (.message, tMsg) }
+    if t >= tOpen && t < tMsg { return (.open, tOpen) }
+    return (.hidden, 0) }
+  /* the pointer: wanders, goes to Going, clicks, types on (small jitters), then the end */
+  func cursorAt(_ t: Double) -> CGPoint {
+    let L = islandLayout(.open, text: card.text), w = max(L.size.width, notch.width + 2*EAR), x0 = NX - w/2 + (w - L.size.width)/2
+    let going = CGPoint(x: x0 + L.buttons[0].midX, y: notch.height + L.buttons[0].midY + 2)
+    let rest = CGPoint(x: SW*0.66, y: SH*0.62)
+    func mix(_ a: CGPoint, _ b: CGPoint, _ k: Double) -> CGPoint { let e = CGFloat(k < 0.5 ? 4*k*k*k : 1 - pow(-2*k + 2, 3)/2); return CGPoint(x: a.x + (b.x - a.x)*e, y: a.y + (b.y - a.y)*e) }
+    if t < 2.6 { return CGPoint(x: rest.x + CGFloat(sin(t*1.3))*30, y: rest.y + CGFloat(cos(t*0.9))*14) }
+    if t < 3.6 { return mix(CGPoint(x: rest.x + CGFloat(sin(2.6*1.3))*30, y: rest.y + CGFloat(cos(2.6*0.9))*14), going, (t - 2.6)/1.0) }
+    if t < 5.2 { return going }
+    if t < 6.4 { return mix(going, CGPoint(x: SW*0.42, y: SH*0.7), (t - 5.2)/1.2) }
+    let typing = CGPoint(x: SW*0.42, y: SH*0.7)
+    if t < tCaught + 2.4 { return CGPoint(x: typing.x + CGFloat(sin(t*7))*2, y: typing.y + CGFloat(cos(t*5))*1.5) }
+    return mix(typing, CGPoint(x: SW*0.58, y: SH*0.66), min(1, (t - tCaught - 2.4)/2.0)) }
+  func e3(_ u: Double) -> CGFloat { CGFloat(u < 0.5 ? 4*u*u*u : 1 - pow(-2*u + 2, 3)/2) }
+  func popIn(_ u: Double) -> CGFloat { u <= 0 ? 0 : u >= 0.6 ? 1 : CGFloat(1 - exp(-9*u)*cos(12*u)) }
+  /* simulation state, stepped frame by frame like the app */
+  var size = notch, vel = CGSize.zero, alpha: CGFloat = 0, lastPhase = Phase.hidden, arrivedAt = -100.0, leftAt = -100.0
+  let url = URL(fileURLWithPath: args[i + 1]); try? FileManager.default.removeItem(at: url)
+  let writer = try! AVAssetWriter(outputURL: url, fileType: .mp4)
+  let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: PW, AVVideoHeightKey: PH,
+    AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 10_000_000, AVVideoMaxKeyFrameIntervalKey: 30, AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel]])
+  input.expectsMediaDataInRealTime = false
+  let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+    kCVPixelBufferWidthKey as String: PW, kCVPixelBufferHeightKey as String: PH])
+  writer.add(input)
+  guard writer.startWriting() else { print("could not start writing:", String(describing: writer.error)); exit(1) }
+  writer.startSession(atSourceTime: .zero)
+  let frames = Int(DUR*FPS)
+  for f in 0..<frames {
+    let t = Double(f)/FPS, dt = 1/FPS
+    let (ph, since) = phaseAt(t), age = t - since
+    let faceful = Island.faceful.contains(ph), wasFaceful = Island.faceful.contains(lastPhase)
+    if faceful && !wasFaceful { arrivedAt = t }; if !faceful && wasFaceful { leftAt = t }
+    if ph != lastPhase { alpha = 0 }; lastPhase = ph
+    let text = ph == .open ? card.text : ph == .message ? goLine : ph == .caught ? caughtLine : ""
+    let L = islandLayout(ph, text: text)
+    let tg = ph == .hidden ? notch : CGSize(width: max(L.size.width, notch.width + 2*EAR), height: notch.height + L.size.height)
+    let opening = tg.height > size.height, kw: CGFloat = opening ? 200 : 260, cw: CGFloat = opening ? 24 : 26, kh: CGFloat = opening ? 270 : 220, ch: CGFloat = opening ? 19 : 24
+    for _ in 0..<8 { let h = CGFloat(dt)/8
+      vel.width += (kw*(tg.width - size.width) - cw*vel.width)*h; size.width += vel.width*h
+      vel.height += (kh*(tg.height - size.height) - ch*vel.height)*h; size.height += vel.height*h }
+    let near = abs(size.height - tg.height) < max(4, tg.height*0.12) && abs(size.width - tg.width) < max(4, tg.width*0.12)
+    alpha = near && ph != .hidden ? min(1, alpha + CGFloat(dt)*7) : max(0, alpha - CGFloat(dt)*14)
+    let cur = cursorAt(t)
+    while !input.isReadyForMoreMediaData { usleep(2000) }
+    var pbo: CVPixelBuffer?
+    if let pool = adaptor.pixelBufferPool { CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pbo) }
+    else { CVPixelBufferCreate(nil, PW, PH, kCVPixelFormatType_32BGRA, [kCVPixelBufferCGImageCompatibilityKey: true, kCVPixelBufferCGBitmapContextCompatibilityKey: true] as CFDictionary, &pbo) }
+    guard let pb = pbo else { print("no pixel buffer at frame", f); exit(1) }
+    CVPixelBufferLockBaseAddress(pb, [])
+    let g = CGContext(data: CVPixelBufferGetBaseAddress(pb), width: PW, height: PH, bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
+                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
+    g.translateBy(x: 0, y: CGFloat(PH)); g.scaleBy(x: S, y: -S)
+    /* the desktop and the menu bar */
+    linearL(g, [hex("#2a2f55"), hex("#151726")], [0, 1], from: .zero, to: CGPoint(x: 0, y: SH))
+    radial(g, [rgb(0.47, 0.39, 0.9, 0.35), rgb(0.47, 0.39, 0.9, 0)], [0, 1], from: CGPoint(x: SW*0.72, y: SH), 10, to: CGPoint(x: SW*0.72, y: SH), SW*0.6)
+    g.setFillColor(rgb(0.055, 0.06, 0.095, 0.55)); g.fill(CGRect(x: 0, y: 0, width: SW, height: notch.height))
+    drawText(g, attributed("Finder", 14, .bold, NSColor(white: 1, alpha: 0.86)), in: CGRect(x: 22, y: 9, width: 80, height: 20))
+    for (k, w) in ["File", "Edit"].enumerated() { drawText(g, attributed(w, 14, .medium, NSColor(white: 1, alpha: 0.72)), in: CGRect(x: 84 + CGFloat(k)*46, y: 9, width: 60, height: 20)) }
+    drawText(g, attributed("Mon 16:20", 14, .semibold, NSColor(white: 1, alpha: 0.86)), in: CGRect(x: SW - 96, y: 9, width: 90, height: 20))
+    g.setStrokeColor(rgb(1, 1, 1, 0.8)); g.setLineWidth(1.4); g.stroke(CGRect(x: SW - 136, y: notch.height/2 - 5, width: 20, height: 10))
+    g.setFillColor(rgb(1, 1, 1, 0.8)); g.fill(CGRect(x: SW - 134, y: notch.height/2 - 3, width: 12, height: 6))
+    /* the roommate in the bar: following the pointer, blinking; teleporting out and back */
+    var tScale: CGFloat = 1, tSquash: CGFloat = 0, tPuff = -1.0
+    if faceful { let u = t - arrivedAt
+      if u < 0.05 { tScale = 1 + 0.08*e3(u/0.05) } else if u < 0.14 { let k = e3((u - 0.05)/0.09); tScale = 1.08*(1 - k); tSquash = k } else { tScale = 0 }
+      if u >= 0.1 { tPuff = u - 0.1 } }
+    else { let u = t - leftAt - 0.12; if u < 0 { tScale = 0 } else if u < 0.6 { tScale = popIn(u); tPuff = u } }
+    var bar = FaceLook(); let dx = cur.x - HOME.x, dy = cur.y - HOME.y, d = max(1, hypot(dx, dy)), k = min(1, d/260)*0.68
+    for kp in [\FaceLook.l, \FaceLook.r] { bar[keyPath: kp].px = dx/d*k; bar[keyPath: kp].py = dy/d*k }
+    if [1.1, 5.9, 8.1, 17.2].contains(where: { t >= $0 && t < $0 + 0.13 }) { bar.l.closed = .blink; bar.r.closed = .blink }
+    let eh: CGFloat = 16, fw = eh*2.22
+    if tScale > 0.01 { g.saveGState(); g.translateBy(x: HOME.x, y: HOME.y); g.scaleBy(x: max(0.01, tScale + 0.5*tSquash), y: max(0.01, tScale*(1 - 0.85*tSquash))); g.translateBy(x: -HOME.x, y: -HOME.y)
+      drawFace(g, in: CGRect(x: HOME.x - fw/2, y: HOME.y - eh/2, width: fw, height: eh), look: bar, who: who, ink: rgb(1, 1, 1), dark: true); g.restoreGState() }
+    if tPuff >= 0 && tPuff < 0.35 { let kk = CGFloat(tPuff/0.35), dd = 4 + 9*CGFloat(1 - exp(-6*tPuff/0.35)), cols = [rgb(1, 1, 1), FX_SPIN, FX_HEART, rgb(1, 1, 1)]
+      for j in 0..<4 { let a = CGFloat(j)*CGFloat.pi/2 + 0.4; drawSparkle(g, at: CGPoint(x: HOME.x + cos(a)*dd*1.3, y: HOME.y + sin(a)*dd*0.55), r: 2.6*(1 - kk), color: cols[j].copy(alpha: 1 - kk)!) } }
+    /* the island */
+    var cardLook = FaceLook()
+    if ph == .message { let hu = t - (tMsg + 0.2); if hu >= 0 && hu < Brain.loveFor { var x = 1 - exp(-7*hu)*cos(15*hu); for b in [0.85, 1.1, 1.55, 1.8] { let dd2 = hu - b; if dd2 > 0 && dd2 < 0.2 { x += 0.24*sin(dd2/0.2 * .pi) } }
+      let out = Brain.loveFor - 0.28; if hu > out { let kk = (hu - out)/0.28; x *= 1 - kk*kk }; cardLook.l.heart = CGFloat(max(0, x)); cardLook.r.heart = CGFloat(max(0, x)) } }
+    let fu = t - arrivedAt - 0.1, faceScale: CGFloat = fu <= 0 ? 0 : fu >= 0.6 ? 1 : CGFloat(1 - exp(-9*fu)*cos(12*fu))
+    let fl: CGFloat = 6, ox = NX - (size.width + 2*fl)/2
+    /* where the face sits, for the caught card's gaze */
+    var gaze = CGPoint.zero
+    if ph == .caught { let fcx = ox + fl + (size.width - L.size.width)/2 + L.face.midX, fcy = notch.height + L.face.midY
+      let gdx = cur.x - fcx, gdy = cur.y - fcy, gd = max(1, hypot(gdx, gdy)), gk = min(1, gd/260); gaze = CGPoint(x: gdx/gd*gk, y: gdy/gd*gk) }
+    let hover = ph == .open && t >= 3.4 ? 0 : -1
+    g.saveGState(); g.translateBy(x: ox, y: 0)
+    paintIsland(g, size: size, phase: ph, text: text, buttons: ph == .open ? card.buttons : [], who: who, alpha: alpha, t: t, left: 0, hover: hover,
+                notch: notch, kind: .move, look: cardLook, burst: t - (tMsg + 0.25), age: age, gaze: gaze, faceScale: faceScale)
+    g.restoreGState()
+    /* "two minutes later" */
+    if t > 7.0 && t < 9.2 { let a = CGFloat(min(1, (t - 7.0)/0.4, (9.2 - t)/0.4))
+      drawText(g, attributed("Two minutes later…", 22, .semibold, NSColor(white: 1, alpha: 0.9*a), center: true), in: CGRect(x: 0, y: SH*0.8, width: SW, height: 34)) }
+    /* the pointer, with a little press on the click */
+    if t < tEnd + 0.2 { let press: CGFloat = abs(t - tClick) < 0.12 ? 0.85 : 1
+      g.saveGState(); g.translateBy(x: cur.x, y: cur.y); g.scaleBy(x: 1.15*press, y: 1.15*press)
+      let arrow = CGMutablePath(); arrow.move(to: .zero); [CGPoint(x: 0, y: 17), CGPoint(x: 4.2, y: 13), CGPoint(x: 7, y: 19.5), CGPoint(x: 9.6, y: 18.4), CGPoint(x: 6.9, y: 12.2), CGPoint(x: 12.4, y: 12.2)].forEach { arrow.addLine(to: $0) }; arrow.closeSubpath()
+      g.setShadow(offset: CGSize(width: 0, height: -1), blur: 3, color: rgb(0, 0, 0, 0.4)); g.addPath(arrow); g.setFillColor(rgb(0, 0, 0)); g.fillPath()
+      g.setShadow(offset: .zero, blur: 0, color: nil); g.addPath(arrow); g.setStrokeColor(rgb(1, 1, 1)); g.setLineWidth(1.3); g.strokePath(); g.restoreGState() }
+    /* the end card */
+    if t > tEnd { let a = CGFloat(min(1, (t - tEnd)/0.6))
+      g.setFillColor(rgb(0.055, 0.06, 0.08, a)); g.fill(CGRect(x: 0, y: 0, width: SW, height: SH))
+      var end = FaceLook(); end.l.px = 0.25; end.r.px = 0.25; end.l.py = 0.1; end.r.py = 0.1; if t > tEnd + 1.6 && t < tEnd + 1.75 { end.l.closed = .blink; end.r.closed = .blink }
+      g.saveGState(); g.setAlpha(a); let pop = popIn(t - tEnd - 0.1), ec = CGPoint(x: SW/2, y: SH*0.36)
+      g.translateBy(x: ec.x, y: ec.y); g.scaleBy(x: pop, y: pop); g.translateBy(x: -ec.x, y: -ec.y)
+      drawFace(g, in: CGRect(x: ec.x - 90, y: ec.y - 40, width: 180, height: 80), look: end, who: who, ink: rgb(1, 1, 1), dark: true); g.restoreGState()
+      drawText(g, attributed("Roomie lives in your menu bar.", 30, .heavy, NSColor(white: 1, alpha: a), center: true), in: CGRect(x: 0, y: SH*0.56, width: SW, height: 44))
+      drawText(g, attributed("Free for Mac · lesheess.github.io/small-living-things", 15, .semibold, NSColor(white: 1, alpha: 0.7*a), center: true), in: CGRect(x: 0, y: SH*0.56 + 50, width: SW, height: 24)) }
+    CVPixelBufferUnlockBaseAddress(pb, [])
+    if !adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(f), timescale: CMTimeScale(FPS))) { print("append failed at frame", f, String(describing: writer.error)); break }
+  }
+  input.markAsFinished(); let sem = DispatchSemaphore(value: 0); writer.finishWriting { sem.signal() }; sem.wait()
+  print("wrote", args[i + 1], writer.status == .completed ? "" : "\(String(describing: writer.error))"); exit(0)
+}
 if let i = args.firstIndex(of: "--extra"), i + 1 < args.count {
   /* asleep with drifting z's and low battery with its badge, big and at menu-bar size, on dark and light */
   var sl = FaceLook(); sl.l.closed = .sleep; sl.r.closed = .sleep; sl.zzz = 0.7
@@ -1532,6 +1665,19 @@ if let i = args.firstIndex(of: "--icon"), i + 1 < args.count {
     g.drawLinearGradient(grad, start: CGPoint(x: 0, y: 100), end: CGPoint(x: 0, y: 924), options: [])
     var f = FaceLook(); f.l.px = 0.22; f.l.py = -0.2; f.r.px = 0.22; f.r.py = -0.2
     drawFace(g, in: CGRect(x: 512 - 290*2.22/2, y: 512 - 145, width: 290*2.22, height: 290), look: f, who: nil, ink: rgb(1, 1, 1), dark: true)
+  }
+  writePNG(img, args[i + 1]); print("wrote", args[i + 1]); exit(0)
+}
+/* a square profile picture: the icon's eyes on a full-bleed tile, sized to sit inside a circle crop */
+if let i = args.firstIndex(of: "--avatar"), i + 1 < args.count {
+  let n: CGFloat = 1024
+  let img = bitmap(CGSize(width: n, height: n), scale: 1) { g in
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    let grad = CGGradient(colorsSpace: cs, colors: [rgb(0.16, 0.17, 0.23), rgb(0.06, 0.065, 0.09)] as CFArray, locations: [0, 1])!
+    g.drawLinearGradient(grad, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: n), options: [])
+    var f = FaceLook(); f.l.px = 0.22; f.l.py = -0.2; f.r.px = 0.22; f.r.py = -0.2
+    let h: CGFloat = 300
+    drawFace(g, in: CGRect(x: 512 - h*2.22/2, y: 512 - h/2, width: h*2.22, height: h), look: f, who: nil, ink: rgb(1, 1, 1), dark: true)
   }
   writePNG(img, args[i + 1]); print("wrote", args[i + 1]); exit(0)
 }

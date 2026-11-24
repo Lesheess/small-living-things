@@ -6,3 +6,7 @@ roomie/LAUNCH.md
 # build output (the download lives in site/roomie/Roomie.zip)
 roomie/Roomie.app/
 .DS_Store
+# launch films, big; made by Roomie --video
+roomie/lab/film/
+# the avatar, redrawn any time by Roomie --avatar
+roomie/lab/avatar/
