@@ -1345,10 +1345,13 @@ if let i = args.firstIndex(of: "--og"), i + 1 < args.count {
 if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
   /* the film for the launch, drawn by the app itself frame by frame: a close-up of a MacBook's menu bar, the walk nudge
      teleporting out of the bar into the notch, "Going" clicked, two minutes later the roommate catches you, and an end card.
-     1920×1080, 30 fps, H.264. Usage: Roomie --video out.mp4 [madam|gentleman] */
+     1920×1080, 30 fps, H.264. Usage: Roomie --video out.mp4 [madam|gentleman] [vertical]
+     vertical: 1080×1920 for Reels; the lid's black bezel fills the top fifth (under the app's own buttons), the screen starts below it */
   let who: Who = args.count > i + 2 && args[i + 2] == "gentleman" ? .gentleman : .madam
-  let PW = 1920, PH = 1080, FPS = 30.0, S: CGFloat = 2.6, SW = CGFloat(PW)/S, SH = CGFloat(PH)/S
-  let notch = CGSize(width: 208, height: 37.5), NX = SW/2, HOME = CGPoint(x: NX + 104 + 64, y: notch.height/2), DUR = 19.5
+  let vert = args.dropFirst(i + 2).contains("vertical")
+  let PW = vert ? 1080 : 1920, PH = vert ? 1920 : 1080, FPS = 30.0, S: CGFloat = vert ? 2.5 : 2.6, SW = CGFloat(PW)/S, FH = CGFloat(PH)/S
+  let Y0: CGFloat = vert ? (FH*0.2).rounded() : 0, SH = FH - Y0
+  let notch = CGSize(width: 208, height: 37.5), NX = SW/2, HOME = CGPoint(x: NX + 104 + (vert ? 34 : 64), y: notch.height/2), DUR = 19.5
   let card = Card(kind: .move, text: who == .madam ? "Half an hour in that chair. Up you get: walk for five minutes." : "Thirty minutes seated. A five-minute walk would do you credit.", buttons: ["Going", "Later"])
   let goLine = who == .madam ? "Off you go. I'll be here." : "Very good. Take your time."
   let caughtLine = who == .madam ? "Going, you said. Darling, I can see you." : "A remarkably brief stroll, if I may say so."
@@ -1412,15 +1415,20 @@ if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
     let g = CGContext(data: CVPixelBufferGetBaseAddress(pb), width: PW, height: PH, bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
                       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
     g.translateBy(x: 0, y: CGFloat(PH)); g.scaleBy(x: S, y: -S)
+    if vert { g.setFillColor(rgb(0.02, 0.02, 0.025)); g.fill(CGRect(x: 0, y: 0, width: SW, height: Y0)); g.translateBy(x: 0, y: Y0) }
     /* the desktop and the menu bar */
+    g.saveGState(); g.clip(to: CGRect(x: 0, y: 0, width: SW, height: SH))
     linearL(g, [hex("#2a2f55"), hex("#151726")], [0, 1], from: .zero, to: CGPoint(x: 0, y: SH))
     radial(g, [rgb(0.47, 0.39, 0.9, 0.35), rgb(0.47, 0.39, 0.9, 0)], [0, 1], from: CGPoint(x: SW*0.72, y: SH), 10, to: CGPoint(x: SW*0.72, y: SH), SW*0.6)
+    g.restoreGState()
     g.setFillColor(rgb(0.055, 0.06, 0.095, 0.55)); g.fill(CGRect(x: 0, y: 0, width: SW, height: notch.height))
     drawText(g, attributed("Finder", 14, .bold, NSColor(white: 1, alpha: 0.86)), in: CGRect(x: 22, y: 9, width: 80, height: 20))
-    for (k, w) in ["File", "Edit"].enumerated() { drawText(g, attributed(w, 14, .medium, NSColor(white: 1, alpha: 0.72)), in: CGRect(x: 84 + CGFloat(k)*46, y: 9, width: 60, height: 20)) }
-    drawText(g, attributed("Mon 16:20", 14, .semibold, NSColor(white: 1, alpha: 0.86)), in: CGRect(x: SW - 96, y: 9, width: 90, height: 20))
-    g.setStrokeColor(rgb(1, 1, 1, 0.8)); g.setLineWidth(1.4); g.stroke(CGRect(x: SW - 136, y: notch.height/2 - 5, width: 20, height: 10))
-    g.setFillColor(rgb(1, 1, 1, 0.8)); g.fill(CGRect(x: SW - 134, y: notch.height/2 - 3, width: 12, height: 6))
+    if !vert {
+      for (k, w) in ["File", "Edit"].enumerated() { drawText(g, attributed(w, 14, .medium, NSColor(white: 1, alpha: 0.72)), in: CGRect(x: 84 + CGFloat(k)*46, y: 9, width: 60, height: 20)) }
+      drawText(g, attributed("Mon 16:20", 14, .semibold, NSColor(white: 1, alpha: 0.86)), in: CGRect(x: SW - 96, y: 9, width: 90, height: 20)) }
+    let bx = vert ? SW - 34 : SW - 136
+    g.setStrokeColor(rgb(1, 1, 1, 0.8)); g.setLineWidth(1.4); g.stroke(CGRect(x: bx, y: notch.height/2 - 5, width: 20, height: 10))
+    g.setFillColor(rgb(1, 1, 1, 0.8)); g.fill(CGRect(x: bx + 2, y: notch.height/2 - 3, width: 12, height: 6))
     /* the roommate in the bar: following the pointer, blinking; teleporting out and back */
     var tScale: CGFloat = 1, tSquash: CGFloat = 0, tPuff = -1.0
     if faceful { let u = t - arrivedAt
@@ -1452,7 +1460,7 @@ if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
     g.restoreGState()
     /* "two minutes later" */
     if t > 7.0 && t < 9.2 { let a = CGFloat(min(1, (t - 7.0)/0.4, (9.2 - t)/0.4))
-      drawText(g, attributed("Two minutes later…", 22, .semibold, NSColor(white: 1, alpha: 0.9*a), center: true), in: CGRect(x: 0, y: SH*0.8, width: SW, height: 34)) }
+      drawText(g, attributed("Two minutes later…", 22, .semibold, NSColor(white: 1, alpha: 0.9*a), center: true), in: CGRect(x: 0, y: SH*(vert ? 0.56 : 0.8), width: SW, height: 34)) }
     /* the pointer, with a little press on the click */
     if t < tEnd + 0.2 { let press: CGFloat = abs(t - tClick) < 0.12 ? 0.85 : 1
       g.saveGState(); g.translateBy(x: cur.x, y: cur.y); g.scaleBy(x: 1.15*press, y: 1.15*press)
@@ -1461,13 +1469,18 @@ if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
       g.setShadow(offset: .zero, blur: 0, color: nil); g.addPath(arrow); g.setStrokeColor(rgb(1, 1, 1)); g.setLineWidth(1.3); g.strokePath(); g.restoreGState() }
     /* the end card */
     if t > tEnd { let a = CGFloat(min(1, (t - tEnd)/0.6))
+      g.translateBy(x: 0, y: -Y0); let SH = FH
       g.setFillColor(rgb(0.055, 0.06, 0.08, a)); g.fill(CGRect(x: 0, y: 0, width: SW, height: SH))
       var end = FaceLook(); end.l.px = 0.25; end.r.px = 0.25; end.l.py = 0.1; end.r.py = 0.1; if t > tEnd + 1.6 && t < tEnd + 1.75 { end.l.closed = .blink; end.r.closed = .blink }
       g.saveGState(); g.setAlpha(a); let pop = popIn(t - tEnd - 0.1), ec = CGPoint(x: SW/2, y: SH*0.36)
       g.translateBy(x: ec.x, y: ec.y); g.scaleBy(x: pop, y: pop); g.translateBy(x: -ec.x, y: -ec.y)
       drawFace(g, in: CGRect(x: ec.x - 90, y: ec.y - 40, width: 180, height: 80), look: end, who: who, ink: rgb(1, 1, 1), dark: true); g.restoreGState()
-      drawText(g, attributed("Roomie lives in your menu bar.", 30, .heavy, NSColor(white: 1, alpha: a), center: true), in: CGRect(x: 0, y: SH*0.56, width: SW, height: 44))
-      drawText(g, attributed("Free for Mac · lesheess.github.io/small-living-things", 15, .semibold, NSColor(white: 1, alpha: 0.7*a), center: true), in: CGRect(x: 0, y: SH*0.56 + 50, width: SW, height: 24)) }
+      if vert {
+        drawText(g, attributed("Roomie lives in\nyour menu bar.", 34, .heavy, NSColor(white: 1, alpha: a), center: true), in: CGRect(x: 0, y: SH*0.47, width: SW, height: 90))
+        drawText(g, attributed("Free for Mac\nlesheess.github.io/small-living-things", 15, .semibold, NSColor(white: 1, alpha: 0.7*a), center: true), in: CGRect(x: 0, y: SH*0.47 + 100, width: SW, height: 44)) }
+      else {
+        drawText(g, attributed("Roomie lives in your menu bar.", 30, .heavy, NSColor(white: 1, alpha: a), center: true), in: CGRect(x: 0, y: SH*0.56, width: SW, height: 44))
+        drawText(g, attributed("Free for Mac · lesheess.github.io/small-living-things", 15, .semibold, NSColor(white: 1, alpha: 0.7*a), center: true), in: CGRect(x: 0, y: SH*0.56 + 50, width: SW, height: 24)) } }
     CVPixelBufferUnlockBaseAddress(pb, [])
     if !adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(f), timescale: CMTimeScale(FPS))) { print("append failed at frame", f, String(describing: writer.error)); break }
   }
