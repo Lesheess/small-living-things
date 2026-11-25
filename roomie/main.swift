@@ -1389,7 +1389,7 @@ if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
   writer.add(input)
   guard writer.startWriting() else { print("could not start writing:", String(describing: writer.error)); exit(1) }
   writer.startSession(atSourceTime: .zero)
-  let frames = Int(DUR*FPS)
+  let frames = Int(DUR*FPS), skip = vert ? Int(1.2*FPS) : 0   /* Reels: the first second of an empty bar is where people scroll away; start just before the card springs out */
   for f in 0..<frames {
     let t = Double(f)/FPS, dt = 1/FPS
     let (ph, since) = phaseAt(t), age = t - since
@@ -1406,6 +1406,7 @@ if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
     let near = abs(size.height - tg.height) < max(4, tg.height*0.12) && abs(size.width - tg.width) < max(4, tg.width*0.12)
     alpha = near && ph != .hidden ? min(1, alpha + CGFloat(dt)*7) : max(0, alpha - CGFloat(dt)*14)
     let cur = cursorAt(t)
+    if f < skip { continue }
     while !input.isReadyForMoreMediaData { usleep(2000) }
     var pbo: CVPixelBuffer?
     if let pool = adaptor.pixelBufferPool { CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pbo) }
@@ -1482,7 +1483,7 @@ if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
         drawText(g, attributed("Roomie lives in your menu bar.", 30, .heavy, NSColor(white: 1, alpha: a), center: true), in: CGRect(x: 0, y: SH*0.56, width: SW, height: 44))
         drawText(g, attributed("Free for Mac · lesheess.github.io/small-living-things", 15, .semibold, NSColor(white: 1, alpha: 0.7*a), center: true), in: CGRect(x: 0, y: SH*0.56 + 50, width: SW, height: 24)) } }
     CVPixelBufferUnlockBaseAddress(pb, [])
-    if !adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(f), timescale: CMTimeScale(FPS))) { print("append failed at frame", f, String(describing: writer.error)); break }
+    if !adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(f - skip), timescale: CMTimeScale(FPS))) { print("append failed at frame", f, String(describing: writer.error)); break }
   }
   input.markAsFinished(); let sem = DispatchSemaphore(value: 0); writer.finishWriting { sem.signal() }; sem.wait()
   print("wrote", args[i + 1], writer.status == .completed ? "" : "\(String(describing: writer.error))"); exit(0)
