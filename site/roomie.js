@@ -74,7 +74,10 @@
   /* ---------- the face: two eyes in a box ---------- */
   function face(W, H, look){
     g.setTransform(D, 0, 0, D, 0, 0); g.clearRect(0, 0, W, H);
-    const eh = 16, fw = eh*2.22; return drawFace(g, W/2, H/2, Math.min(eh/2*.94, fw/(4 + V2[who].gap)), look);
+    const eh = 16, fw = eh*2.22, R0 = Math.min(eh/2*.94, fw/(4 + V2[who].gap)), RD = window.RoomieDance;
+    /* dancing (dance.js): the face slides and tilts, and little notes float up beside it */
+    if(RD && look.beat != null) RD.notes(g, W/2, H/2, R0, look, who);
+    g.save(); if(RD) RD.transform(g, W/2, H/2, R0, look); const cs = drawFace(g, W/2, H/2, R0, look); g.restore(); return cs;
   }
   /* two eyes centred on (cx, cy), each R0 in radius; used by the bar and by the stage */
   function drawFace(g, cx, cy0, R0, look){
@@ -174,7 +177,7 @@
     if(crying) look.tear = (t*.7) % 1;
     const pu = t - pokeAt; if(pu >= 0 && pu < .9 && !crying) look.squash = Math.exp(-6*pu)*Math.cos(14*pu);
     const lu = t - loveAt; if(lu >= 0 && lu < .35) look.hop = -Math.sin(lu/.35*Math.PI)*2.5;
-    const cs = face(w, h, look); shared.look = look;
+    shared.look = look; const cs = face(w, h, window.RoomieDance ? window.RoomieDance.apply(look, who) : look);
     /* the tears that fall out of the bar and down the page */
     if(crying && !still && t - dropAt > 1){ dropAt = t; dropLeft = !dropLeft; bits.push({ k:0, x:b.left + cs[dropLeft ? 0 : 1][0], y:b.bottom + 2, vy:30, age:0, s:4.5 }); }
     const W = innerWidth, H = innerHeight;

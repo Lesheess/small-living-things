@@ -63,7 +63,8 @@
     scale = W/BW;
     /* the rhythm: a pause, the card springs out, stays to be read, folds back, the next line */
     /* three rounds, then they rest; a click on the stage starts them again */
-    if(!open && t > nextAt && rounds < 3){ layout(); open = true; since = t; rounds++; }
+    const dancing = window.RoomieDance && window.RoomieDance.amount > .02;
+    if(!open && t > nextAt && rounds < 3 && !dancing){ layout(); open = true; since = t; rounds++; }
     if(open && t - since > (still ? 1e9 : 6.5)){ open = false; since = t; closedAt = t; nextAt = t + 2.2; line = (line + 1) % 3; }
     const tg = target(), n = 4, h = Math.min(.05, t - (frame.last || t))/n; frame.last = t;
     /* a liquid spring, as in the app: opening, the height leads and bounces a touch; closing, the width pulls in first */
@@ -75,16 +76,22 @@
     g.setTransform(D*scale, 0, 0, D*scale, 0, 0); g.clearRect(0, 0, BW, BH);
     /* the desktop: a deep, cool wallpaper */
     const bg = g.createLinearGradient(0, 0, 0, BH); bg.addColorStop(0, "#2a2f55"); bg.addColorStop(1, "#151726");
-    roundRect(0, 0, BW, BH, 22); g.save(); g.clip(); g.fillStyle = bg; g.fillRect(0, 0, BW, BH);
+    roundRect(0, 0, BW, BH, 22); g.save(); g.clip();
+    /* dancing: the camera comes close to their face, as in the film */
+    const RD = window.RoomieDance, da = RD ? RD.amount : 0, ez = da < .5 ? 4*da*da*da : 1 - Math.pow(-2*da + 2, 3)/2;
+    const ex = BW - 112, ey = NOTCH.h/2, eR = 8, Z = 1 + 3.6*ez;            /* true to size: in the bar they are as tall as the system's own icons */
+    if(ez > .001){ g.translate(ex + (BW*.56 - ex)*ez, ey + (BH*.5 - ey)*ez); g.scale(Z, Z); g.translate(-ex, -ey); }
+    g.fillStyle = bg; g.fillRect(-BW, -BH, BW*3, BH*3);
     const glow = g.createRadialGradient(BW*.72, BH*.95, 10, BW*.72, BH*.95, BW*.7); glow.addColorStop(0, "rgba(120,100,230,.35)"); glow.addColorStop(1, "rgba(120,100,230,0)");
-    g.fillStyle = glow; g.fillRect(0, 0, BW, BH);
+    g.fillStyle = glow; g.fillRect(-BW, -BH, BW*3, BH*3);
     /* the menu bar */
-    g.fillStyle = "rgba(14,15,24,.55)"; g.fillRect(0, 0, BW, NOTCH.h);
+    g.fillStyle = "rgba(14,15,24,.55)"; g.fillRect(-BW, 0, BW*3, NOTCH.h);
+    g.save(); g.globalAlpha = 1 - ez;                        /* the menus and the clock step aside while the camera is close */
     g.font = "500 14px 'Golos Text', -apple-system, sans-serif"; g.fillStyle = "rgba(255,255,255,.62)"; g.textBaseline = "middle";
     ["File", "Edit"].forEach((w, i) => g.fillText(w, 26 + i*54, NOTCH.h/2 + 1));      /* a real menu never runs under the notch, nor under the card */
     g.textAlign = "right"; g.fillStyle = "rgba(255,255,255,.85)";
     g.fillText(new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), BW - 22, NOTCH.h/2 + 1);
-    g.textAlign = "left";
+    g.textAlign = "left"; g.restore();
     /* the card, grown out of the notch */
     const x = BW/2 - size.w/2, age = t - since;
     /* arriving: a glow in their colour and a band of light sweeping round the edge */
@@ -96,7 +103,6 @@
       g.strokeStyle = lg; g.lineWidth = 2.8; shape(x, size.w, size.h); g.stroke(); g.restore(); }
     g.fillStyle = "#000"; shape(x, size.w, size.h); g.fill();
     /* the roommate at the right of the bar; they glance at the card while it is out */
-    const ex = BW - 112, ey = NOTCH.h/2, eR = 8;            /* true to size: in the bar they are as tall as the system's own icons */
     const cardCenter = { x: BW/2, y: NOTCH.h + 40 };
     box = { x: ex - eR*2.4, y: ey - eR*1.3, w: eR*4.8, h: eR*2.6 };
     /* teleport: they swell, squeeze flat and vanish from the bar as the card opens, and pop back home when it folds */
@@ -104,8 +110,10 @@
     const e3 = u => u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3)/2, pop = u => u <= 0 ? 0 : u >= .6 ? 1 : 1 - Math.exp(-9*u)*Math.cos(12*u);
     if(open){ if(age < .05) hs = 1 + .08*e3(age/.05); else if(age < .14){ const k = e3((age - .05)/.09); hs = 1.08*(1 - k); sq = k; } else hs = 0; if(age >= .1) puff = age - .1; }
     else { const u = t - closedAt - .12; if(u < 0) hs = 0; else if(u < .6){ hs = pop(u); puff = u; } }
-    const barLook = lookFrom(ex, ey, null);
-    if(barLook && hs > .01){ g.save(); g.translate(ex, ey); g.scale(Math.max(.01, hs + .5*sq), Math.max(.01, hs*(1 - .85*sq))); g.translate(-ex, -ey); R.drawFace(g, ex, ey, eR, barLook); g.restore(); }
+    const raw = lookFrom(ex, ey, null), barLook = raw && RD ? RD.apply(raw, R.who) : raw;
+    if(barLook && barLook.beat != null) RD.notes(g, ex, ey, eR, barLook, R.who);
+    if(barLook && hs > .01){ g.save(); g.translate(ex, ey); g.scale(Math.max(.01, hs + .5*sq), Math.max(.01, hs*(1 - .85*sq))); g.translate(-ex, -ey);
+      if(RD) RD.transform(g, ex, ey, eR, barLook); R.drawFace(g, ex, ey, eR, barLook); g.restore(); }
     if(puff >= 0 && puff < .35){ const k = puff/.35, d = 4 + 9*(1 - Math.exp(-6*k));
       ["#ffffff", "#8f80eb", "#cd6766", "#ffffff"].forEach((col, i) => { const an = i*Math.PI/2 + .4; star(ex + Math.cos(an)*d*1.3, ey + Math.sin(an)*d*.55, 2.6*(1 - k), 1 - k, col); }); }
     if(alpha > .01){
@@ -131,7 +139,14 @@
     requestAnimationFrame(frame);
   }
   /* a click on the eyes pokes them; a click on the card answers it, and they are pleased */
-  cv.addEventListener("click", e => { const b = cv.getBoundingClientRect(), x = (e.clientX - b.left)/scale, y = (e.clientY - b.top)/scale;
+  /* the song starts: the card folds away and they dance; it stops: one more round of lines later */
+  document.addEventListener("roomie-dance", e => { const t = T();
+    if(e.detail){ if(open){ open = false; since = t; closedAt = t; line = (line + 1) % 3; } }
+    else { nextAt = t + 2.5; rounds = Math.min(rounds, 2); }
+    const b = document.querySelector("[data-play]"); if(b){ b.setAttribute("aria-pressed", String(e.detail)); b.querySelector("span").textContent = e.detail ? "Stop the music" : "Put a song on"; } });
+  const play = document.querySelector("[data-play]"); if(play) play.addEventListener("click", () => window.RoomieDance && window.RoomieDance.toggle());
+  cv.addEventListener("click", e => { if(window.RoomieDance && window.RoomieDance.amount > .02) return;
+    const b = cv.getBoundingClientRect(), x = (e.clientX - b.left)/scale, y = (e.clientY - b.top)/scale;
     if(box && x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h){ R.poke(); return; }
     if(open && Math.abs(x - BW/2) < CARD_W/2 && y < NOTCH.h + cardH()){ open = false; since = T(); closedAt = T(); nextAt = T() + 2.2; line = (line + 1) % 3; R.love(); return; }
     if(!open && rounds >= 3){ rounds = 0; nextAt = T() + 0.2; } });
