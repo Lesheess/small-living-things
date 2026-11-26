@@ -12,7 +12,9 @@ Roomie is not registered with Apple yet, so the first time macOS will stop it. T
 
 ### What they read
 
-The clock, how long since you last touched the Mac, where the pointer is, that a click happened (not where), the battery level, how hot the Mac runs, whether the microphone is in use (so they keep quiet on calls) and whether the front window fills the screen. Nothing on your screen, nothing you type. There is no network code at all.
+The clock, how long since you last touched the Mac, where the pointer is, that a click happened (not where), the battery level, how hot the Mac runs, whether the microphone is in use (so they keep quiet on calls), whether the front window fills the screen, whether sound is coming out of the Mac, and whether Spotify or Apple Music is playing (and who). Nothing on your screen, nothing you type. There is no network code at all, and no permission is needed.
+
+When music plays, they dance. If you choose Dancing > To the Beat (macOS 14.2 or later), macOS asks once to let Roomie hear the Mac's sound; it keeps only the last fifth of a second in memory, to find the beat, and records nothing.
 
 ### Build it yourself
 

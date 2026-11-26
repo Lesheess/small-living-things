@@ -29,6 +29,7 @@ import IOKit.ps
 import ServiceManagement
 import CoreAudio
 import AVFoundation
+import Accelerate
 
 // MARK: - who
 
@@ -53,6 +54,9 @@ struct FaceLook { var l = EyeLook(), r = EyeLook(); var tear: CGFloat? = nil; va
   var sparkle: CGFloat? = nil                     /* > nil: little stars twinkle round them; the value is a clock in seconds */
   var battery: CGFloat? = nil                     /* > nil: a little empty battery blinks by them (low battery); a clock */
   var zzz: CGFloat? = nil                         /* > nil: z's drift up from them (asleep); a clock in seconds */
+  /* 0.9, dancing: the head tilts and slides; little notes float up beside them, counted in beats */
+  var tilt: CGFloat = 0, dx: CGFloat = 0
+  var beat: CGFloat? = nil, beatLen: CGFloat = 0.5, noteEvery: CGFloat = 2
 }
 
 func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> CGColor { CGColor(srgbRed: r, green: g, blue: b, alpha: a) }
@@ -461,6 +465,9 @@ func drawV2Face(_ g: CGContext, in box: CGRect, look: FaceLook, who: Who?, light
   let st = who == .gentleman ? V2_GENT : V2_MADAM
   let R0 = min(box.height/2*0.94, box.width/(4 + st.gap)), cx = box.midX, cy = box.midY + look.hop
   g.saveGState(); defer { g.restoreGState() }
+  if look.beat != nil { drawNotes(g, cx: cx, cy: box.midY, R0: R0, look: look, who: who, light: light) }
+  /* dancing: the whole face slides and tilts about its centre */
+  if look.dx != 0 || look.tilt != 0 { g.translateBy(x: cx + look.dx*R0/7.5, y: cy); g.rotate(by: look.tilt); g.translateBy(x: -cx, y: -cy) }
   if look.squash != 0 { g.translateBy(x: cx, y: cy + R0); g.scaleBy(x: 1 + 0.16*look.squash, y: 1 - 0.3*look.squash); g.translateBy(x: -cx, y: -cy - R0) }
   var centers: [CGPoint] = []
   for i in 0..<2 {
@@ -499,6 +506,69 @@ func drawV2Face(_ g: CGContext, in box: CGRect, look: FaceLook, who: Who?, light
       let a = attributed("z", size, .heavy, col.withAlphaComponent(sin(u*CGFloat.pi)))
       drawText(g, a, in: CGRect(x: c.x + R0*(0.55 + 0.9*u), y: c.y - R0*(0.6 + 1.3*u) - size*0.6, width: size*1.2, height: size*1.4)) } }
 }
+/* a quiet note now and then while they dance: hers every two beats, his every four; it floats up beside them and fades.
+   Worked out from the beat count alone (like the z's), so every picture of the same moment is the same */
+func drawEighth(_ g: CGContext, at p: CGPoint, s: CGFloat, beamed: Bool) {
+  func head(_ c: CGPoint) { g.saveGState(); g.translateBy(x: c.x, y: c.y); g.rotate(by: -0.35); g.fillEllipse(in: CGRect(x: -s*0.3, y: -s*0.21, width: s*0.6, height: s*0.42)); g.restoreGState() }
+  g.setLineWidth(max(0.7, s*0.11)); g.setLineCap(.round)
+  if !beamed { head(p); g.beginPath(); g.move(to: CGPoint(x: p.x + s*0.27, y: p.y - s*0.06)); g.addLine(to: CGPoint(x: p.x + s*0.27, y: p.y - s*1.05))
+    g.addQuadCurve(to: CGPoint(x: p.x + s*0.62, y: p.y - s*0.58), control: CGPoint(x: p.x + s*0.36, y: p.y - s*0.72)); g.strokePath() }
+  else { let w = s*0.62; head(p); head(CGPoint(x: p.x + w, y: p.y - s*0.12))
+    g.beginPath(); g.move(to: CGPoint(x: p.x + s*0.27, y: p.y - s*0.06)); g.addLine(to: CGPoint(x: p.x + s*0.27, y: p.y - s*1.02))
+    g.move(to: CGPoint(x: p.x + w + s*0.27, y: p.y - s*0.18)); g.addLine(to: CGPoint(x: p.x + w + s*0.27, y: p.y - s*1.14)); g.strokePath()
+    g.setLineWidth(max(1, s*0.2)); g.setLineCap(.butt); g.beginPath(); g.move(to: CGPoint(x: p.x + s*0.22, y: p.y - s*1.0)); g.addLine(to: CGPoint(x: p.x + w + s*0.32, y: p.y - s*1.12)); g.strokePath() } }
+func drawNotes(_ g: CGContext, cx: CGFloat, cy: CGFloat, R0: CGFloat, look: FaceLook, who: Who?, light: Bool) {
+  guard let beat = look.beat else { return }
+  let ink = light ? rgb(0.12, 0.11, 0.15) : rgb(0.95, 0.945, 0.925)
+  let cols = who == .gentleman ? [ink, light ? hex("#5d6f80") : hex("#9fb0c4"), FX_SPIN] : [FX_SPIN, FX_HEART, ink]
+  let every = look.noteEvery, life: CGFloat = 1.7, last = Int(floor(beat/every))
+  for i in (last - 3)...last {
+    let age = (beat - CGFloat(i)*every)*look.beatLen; guard age >= 0 && age <= life else { continue }
+    let u = age/life, side: CGFloat = i & 1 == 1 ? 1 : -1, s = R0*(0.5 + 0.12*u)
+    let x = cx + side*R0*(2.2 + 0.25*u) + sin(u*CGFloat.pi*2)*R0*0.12 - s*0.3, y = cy - R0*(0.1 + 1.6*u)
+    let a = 0.85*min(1, u*6)*min(1, (1 - u)*2.2), c = cols[((i % 3) + 3) % 3]
+    g.saveGState(); g.setFillColor(c.copy(alpha: c.alpha*a)!); g.setStrokeColor(c.copy(alpha: c.alpha*a)!)
+    drawEighth(g, at: CGPoint(x: x, y: y), s: s, beamed: i % 4 == 3); g.restoreGState() } }
+
+/* the dance itself, the same as roomie/lab/dance.html, which he approved (2026-11-26).
+   beat counts beats since some start; sure is how sure we are of where the beat is (0: they only know a song is on,
+   so they sway loosely with no sharp hits; 1: hits land on the beat). amt fades the whole dance in and out */
+func applyDance(_ f: inout FaceLook, beat b: Double, sure: Double, period: Double, who: Who, amt: Double) {
+  guard amt > 0.001 else { return }
+  let ph = b - floor(b), bar = Int(floor(b/4)), inBar = b - floor(b/4)*4, phrase = ((bar % 8) + 8) % 8
+  let hit = exp(-ph*7)*sure, soft = 0.5 - 0.5*cos(ph*Double.pi*2), A = CGFloat(amt)
+  func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a)*A }
+  var tilt = 0.0, dx = 0.0, hop = 0.0, squash = 0.0, px = 0.0, py = 0.0, up = 0.0, pupil = 0.42
+  var joy = false, heart = 0.0, wink = false, browUp = false
+  if who == .madam {
+    /* half time: one side per two beats, a small bounce down on every beat; the gaze rides along, it doesn't dart */
+    let sway = sin(Double.pi*b/2)
+    tilt = 0.13*sway; dx = 1.6*sway
+    hop = 0.9*hit - 0.5*(1 - hit)*sure*min(1, ph*3) + 0.6*soft*(1 - sure)
+    squash = 0.3*hit; px = 0.35*sway; py = -0.15; pupil = 0.42 + 0.07*hit; up = -0.05
+    joy = ((phrase == 1 || phrase == 3) && inBar >= 2) || (phrase == 6 && inBar >= 1)     /* feeling it: three times a phrase */
+    if phrase == 7 { heart = 0.78 + 0.3*hit + 0.08*soft }                                     /* hearts that beat with the song */
+    wink = phrase == 5 && inBar >= 3 && inBar < 3.5                                           /* a wink at you on the last beat */
+  } else {
+    let sway = sin(Double.pi*b/2)                                                             /* smaller: a dignified sway */
+    tilt = 0.07*sway; dx = 1.2*sway
+    hop = 1.1*hit + 0.5*soft*(1 - sure); squash = 0.14*hit                                    /* a small nod down on the beat */
+    px = 0.3*sway; py = -0.05; up = -0.12 - 0.1*soft*(1 - sure) - 0.14*hit; pupil = 0.42 + 0.05*hit   /* awake, enjoying it */
+    joy = ((phrase == 1 || phrase == 3 || phrase == 5) && inBar >= 2) || phrase == 7          /* savouring, and a whole bar at the end */
+    browUp = phrase == 6 && inBar < 2                                                         /* one lid up: rather good, this */
+  }
+  f.tilt = mix(f.tilt, CGFloat(tilt)); f.dx = mix(f.dx, CGFloat(dx)); f.hop = mix(f.hop, CGFloat(hop)); f.squash = mix(f.squash, CGFloat(squash))
+  for i in 0..<2 { var e = i == 0 ? f.l : f.r
+    e.px = mix(e.px, CGFloat(px)); e.py = mix(e.py, CGFloat(py)); e.pupil = mix(e.pupil, CGFloat(pupil))
+    e.up = mix(e.up, CGFloat(browUp && i == 0 ? -0.45 : up))
+    if browUp { e.px = mix(e.px, 0.5) }
+    if amt > 0.85 {
+      if joy { e.closed = .joy } else if wink && i == 1 { e.closed = .blink }
+      if heart > 0 && !joy { e.heart = CGFloat(heart); e.up = -0.25; if e.closed == .blink { e.closed = nil } } }
+    if i == 0 { f.l = e } else { f.r = e } }
+  if amt > 0.5 { f.beat = CGFloat(b); f.beatLen = CGFloat(period); f.noteEvery = who == .madam ? 2 : 4 }
+}
+
 func drawFace(_ g: CGContext, in box: CGRect, look: FaceLook, who: Who?, ink: CGColor = rgb(0, 0, 0), dark: Bool = false, deep: Bool = false) {
   if USE_V2 { drawV2Face(g, in: box, look: look, who: who, light: !dark); return }
   let r = min(box.height/2 - 0.5, box.width/4.44), cy = box.midY + look.hop
@@ -581,13 +651,24 @@ func drawBurst(_ g: CGContext, at c: CGPoint, radius R: CGFloat, size: CGFloat, 
     drawSparkle(g, at: CGPoint(x: c.x + cos(a)*rr, y: c.y + sin(a)*rr), r: size*(k % 2 == 0 ? 1 : 0.7)*out*tw*fade, color: colors[k], turn: CGFloat(d)*0.8) }
 }
 let FX_HEART = rgb(0.804, 0.404, 0.4), FX_TEAR = rgb(0.224, 0.568, 0.828), FX_SWEAT = FX_TEAR, FX_SPIN = rgb(0.56, 0.5, 0.92)   /* 0.7: the violet is her iris's */   /* from his red #CD6766: one lightness and chroma, only the hue differs */
-func glyphImage(_ look: FaceLook, who: Who?, dim: Bool = false, scale: CGFloat = 1, squash: CGFloat = 0, puff: Double = -1) -> NSImage {
+/* baked: drawn once into a bitmap for the given bar (dark or light), instead of each time macOS shows it (0.9: dancing redraws a lot) */
+func glyphImage(_ look: FaceLook, who: Who?, dim: Bool = false, scale: CGFloat = 1, squash: CGFloat = 0, puff: Double = -1, baked: Bool? = nil) -> NSImage {
   let w = EyesView.eyeH*2.22 + 10, h: CGFloat = 22
   let fx = look.tear != nil || look.sweat != nil || look.sparkle != nil || [look.l, look.r].contains { $0.closed == nil && ($0.heart > 0.02 || $0.spiral > 0.5) }
+  if let dk = baked, USE_V2 { return NSImage(cgImage: glyphCG(look, who: who, dim: dim, scale: scale, squash: squash, puff: puff, dark: dk), size: NSSize(width: w, height: h)) }
   let img = NSImage(size: NSSize(width: w, height: h), flipped: true) { rect in
     guard let g = NSGraphicsContext.current?.cgContext else { return false }
+    paintGlyph(g, rect, look, who: who, dim: dim, scale: scale, squash: squash, puff: puff, fx: fx, dark: NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+    return true }
+  /* a template is painted by macOS in one colour; while hearts, tears, sweat or spirals show, it is drawn as is */
+  img.isTemplate = !fx && !USE_V2 && scale >= 0.99 && puff < 0; return img
+}
+func glyphCG(_ look: FaceLook, who: Who?, dim: Bool = false, scale: CGFloat = 1, squash: CGFloat = 0, puff: Double = -1, dark: Bool, px: CGFloat = 2) -> CGImage {
+  let w = EyesView.eyeH*2.22 + 10, h: CGFloat = 22
+  let fx = look.tear != nil || look.sweat != nil || look.sparkle != nil || [look.l, look.r].contains { $0.closed == nil && ($0.heart > 0.02 || $0.spiral > 0.5) }
+  return bitmap(CGSize(width: w, height: h), scale: px) { g in paintGlyph(g, CGRect(x: 0, y: 0, width: w, height: h), look, who: who, dim: dim, scale: scale, squash: squash, puff: puff, fx: fx, dark: dark) } }
+func paintGlyph(_ g: CGContext, _ rect: CGRect, _ look: FaceLook, who: Who?, dim: Bool, scale: CGFloat, squash: CGFloat, puff: Double, fx: Bool, dark: Bool) {
     let eh = EyesView.eyeH, fw = eh*2.22
-    let dark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     let ink = fx ? (dark ? rgb(1, 1, 1) : rgb(0, 0, 0, 0.85)) : rgb(0, 0, 0)
     if dim { g.setAlpha(0.5); g.beginTransparencyLayer(auxiliaryInfo: nil) }
     /* teleporting: they swell, squeeze flat and wide and are gone; coming back they pop up on a spring */
@@ -599,9 +680,6 @@ func glyphImage(_ look: FaceLook, who: Who?, dim: Bool = false, scale: CGFloat =
       for i in 0..<4 { let a = CGFloat(i)*CGFloat.pi/2 + 0.4
         drawSparkle(g, at: CGPoint(x: rect.midX + cos(a)*d*1.3, y: rect.midY + sin(a)*d*0.55), r: 2.6*(1 - k), color: cols[i].copy(alpha: 1 - k)!) } }
     if dim { g.endTransparencyLayer() }
-    return true }
-  /* a template is painted by macOS in one colour; while hearts, tears, sweat or spirals show, it is drawn as is */
-  img.isTemplate = !fx && !USE_V2 && scale >= 0.99 && puff < 0; return img
 }
 /* 0.5: the owner found the glyph flat and foreign in feeling; the eyeballs come back, at 16 pt, in neutral greys */
 func ballImage(_ look: FaceLook, who: Who?) -> NSImage {
@@ -621,7 +699,8 @@ func signature(_ f: FaceLook, fine k: CGFloat = 1) -> [Int] {
     if c != 0 { return [c] }
     return [Int((e.px*30*k).rounded()), Int((e.py*30*k).rounded()), Int(e.pupil*40*k), Int((e.up*36*k).rounded()), Int((e.ang*16*k).rounded()),
             Int(e.spiral*16*k), e.spiral > 0.05 ? Int(e.spin*6*k) : 0, Int(e.scale*80*k), Int(e.heart*48*k)] }
-  return q(f.l) + [-1] + q(f.r) + [f.tear.map { Int($0*60*k) } ?? -1, f.sweat.map { Int($0*60*k) } ?? -1, Int((f.hop*4*k).rounded()), Int((f.squash*40*k).rounded()), f.sparkle.map { Int($0*20*k) } ?? -1, f.battery.map { Int($0*8) } ?? -1, f.zzz.map { Int($0*12*k) } ?? -1]
+  return q(f.l) + [-1] + q(f.r) + [f.tear.map { Int($0*60*k) } ?? -1, f.sweat.map { Int($0*60*k) } ?? -1, Int((f.hop*4*k).rounded()), Int((f.squash*40*k).rounded()), f.sparkle.map { Int($0*20*k) } ?? -1, f.battery.map { Int($0*8) } ?? -1, f.zzz.map { Int($0*12*k) } ?? -1,
+                                   Int((f.tilt*120*k).rounded()), Int((f.dx*4*k).rounded()), f.beat.map { Int($0*f.beatLen*30*k) } ?? -1]
 }
 
 // MARK: - text
@@ -656,7 +735,7 @@ func writePNG(_ img: CGImage, _ path: String) { let rep = NSBitmapImageRep(cgIma
 // MARK: - what they say
 
 enum Kind { case eyes, move, late, hello }
-enum Reaction { case back, cry, dizzy, battery, hot }
+enum Reaction { case back, cry, dizzy, battery, hot, music }
 struct Card { var kind: Kind; var text: String; var buttons: [String] }
 
 func clockText(_ d: Date = Date()) -> String { let f = DateFormatter(); f.dateFormat = "H:mm"; return f.string(from: d) }
@@ -729,8 +808,16 @@ enum Lines {
                                              ["Rather low on power, I'm afraid.", "A charger, if you'd be so kind.", "I feel a little faint. Battery, you see."])
     case .hot: return pick("hot", who, ["Is it warm in here, or is it you?", "Phew. Someone's working hard.", "I'm melting, darling."],
                                      ["Rather warm in here, isn't it?", "One is perspiring. The Mac is hot.", "Shall we let it cool a little?"])
+    case .music: return music(who, artist: nil)
     }
   }
+  /* a song comes on after a quiet while: one light line, with the artist when the player says who it is */
+  static func music(_ who: Who, artist a0: String?) -> String {
+    if let a = a0, a.count <= 26 {
+      return pick("musicA", who, ["Ooh, \(a). Good taste, darling.", "\(a)? Turn it up, darling.", "Oh, I love \(a)."],
+                                 ["Ah, \(a). Splendid choice.", "\(a). A fine tune, if I may.", "\(a)? Rather good, this."]) }
+    return pick("music", who, ["Oh, I love this one.", "Ooh. Now we're dancing.", "Music! Finally, darling."],
+                              ["A fine tune, if I may say so.", "Ah. Music. Splendid.", "I do enjoy this one."]) }
   /* "Going," you said, and you stayed: a jab, never a scolding, and no new demand */
   static func caught(_ who: Who) -> String { (who == .madam
     ? ["Going, you said. Darling, I can see you.", "Shortest walk I've ever seen.", "Lovely walk? You haven't moved an inch."]
@@ -756,6 +843,148 @@ func frontIsFullScreen() -> Bool {
     if let d = w[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: d),
        sizes.contains(where: { abs($0.width - r.width) < 1 && abs($0.height - r.height) < 1 }) { return true } }
   return false }
+
+// MARK: - music (0.9): when a song is on they dance
+
+/* sound is going out of the Mac right now (any app). Like micInUse, this needs no permission */
+func outputRunning() -> Bool {
+  var dev = AudioDeviceID(0), size = UInt32(MemoryLayout<AudioDeviceID>.size)
+  var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev) == noErr, dev != 0 else { return false }
+  var running = UInt32(0); size = UInt32(MemoryLayout<UInt32>.size); addr.mSelector = kAudioDevicePropertyDeviceIsRunningSomewhere
+  guard AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &running) == noErr else { return false }
+  return running != 0 }
+/* how much later than it is mixed the sound is heard (Bluetooth: a fifth of a second or more), in seconds */
+func outputLatency() -> Double {
+  var dev = AudioDeviceID(0), size = UInt32(MemoryLayout<AudioDeviceID>.size)
+  var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev) == noErr, dev != 0 else { return 0 }
+  func u32(_ sel: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope) -> Double {
+    var v = UInt32(0), sz = UInt32(4), a = AudioObjectPropertyAddress(mSelector: sel, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+    return AudioObjectGetPropertyData(dev, &a, 0, nil, &sz, &v) == noErr ? Double(v) : 0 }
+  var rate = 48000.0, rsz = UInt32(8), ra = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  if AudioObjectGetPropertyData(dev, &ra, 0, nil, &rsz, &rate) != noErr || rate <= 0 { rate = 48000 }
+  let frames = u32(kAudioDevicePropertyLatency, kAudioObjectPropertyScopeOutput) + u32(kAudioDevicePropertySafetyOffset, kAudioObjectPropertyScopeOutput) + u32(kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal)
+  return min(0.5, frames/rate) }
+
+/* Spotify and Apple Music tell the whole system when they play or pause, and who is playing; no permission is needed to hear it.
+   Delivered at once even though Roomie is never the active app */
+final class Music: NSObject {
+  var state: [String: Bool] = [:], artist: String? = nil, startedAt = -1e9, stoppedAt = -1e9
+  var onStart: (() -> Void)? = nil
+  var playing: Bool { state.values.contains(true) }
+  static let players = ["com.spotify.client.PlaybackStateChanged": "com.spotify.client", "com.apple.Music.playerInfo": "com.apple.Music"]
+  override init() { super.init()
+    for name in Music.players.keys { DistributedNotificationCenter.default().addObserver(self, selector: #selector(heard(_:)), name: Notification.Name(name), object: nil, suspensionBehavior: .deliverImmediately) }
+    /* already playing when Roomie starts: a player is open and sound is going out */
+    let open = NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier }.filter { Music.players.values.contains($0) }
+    if let first = open.first, outputRunning() { state[first] = true; startedAt = CACurrentMediaTime() } }
+  @objc func heard(_ n: Notification) {
+    let src = Music.players[n.name.rawValue] ?? n.name.rawValue, was = playing
+    state[src] = (n.userInfo?["Player State"] as? String) == "Playing"
+    if let a = n.userInfo?["Artist"] as? String { artist = a.trimmingCharacters(in: .whitespaces).isEmpty ? nil : a }
+    let now = CACurrentMediaTime()
+    if playing && !was { startedAt = now; onStart?() }
+    if !playing && was { stoppedAt = now }
+    if LOG { FileHandle.standardError.write("music \(src) \(playing ? "playing" : "stopped") \(artist ?? "")\n".data(using: .utf8)!) } }
+}
+
+/* the beat, found in the sound: onsets, then tempo by autocorrelation, then phase by a comb (as in roomie/lab/dance.html) */
+final class BeatTracker {
+  var t0 = 0.0, period = 0.5, conf = 0.0
+  private var prev: [Float]? = nil, env: [(Double, Double)] = [], lastEst = 0.0
+  private let n = 1024, log2n = vDSP_Length(10)
+  private let setup = vDSP_create_fftsetup(10, FFTRadix(kFFTRadix2))!
+  private var window = [Float](repeating: 0, count: 1024)
+  init() { vDSP_hann_window(&window, vDSP_Length(n), Int32(vDSP_HANN_NORM)) }
+  deinit { vDSP_destroy_fftsetup(setup) }
+  func beat(_ t: Double) -> Double { (t - t0)/period }
+  func reset() { prev = nil; env = []; conf = 0 }
+  /* x: the latest 1024 samples; t: when they will be heard */
+  func feed(_ x: [Float], rate: Double, t: Double) {
+    guard x.count == n else { return }
+    var w = [Float](repeating: 0, count: n); vDSP_vmul(x, 1, window, 1, &w, 1, vDSP_Length(n))
+    var re = [Float](repeating: 0, count: n/2), im = [Float](repeating: 0, count: n/2), mag = [Float](repeating: 0, count: n/2)
+    re.withUnsafeMutableBufferPointer { rp in im.withUnsafeMutableBufferPointer { ip in
+      var sc = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+      w.withUnsafeBufferPointer { wp in wp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: n/2) { vDSP_ctoz($0, 2, &sc, 1, vDSP_Length(n/2)) } }
+      vDSP_fft_zrip(setup, &sc, 1, log2n, FFTDirection(FFT_FORWARD)); vDSP_zvabs(&sc, 1, &mag, 1, vDSP_Length(n/2)) } }
+    /* the beat lives in the kick and the snare: lows count most, the hiss of hats (on the "and") least */
+    let hz = rate/Double(n), lo = max(1, Int(30/hz)), hi = min(n/2, Int(4000/hz)), bass = Int(200/hz), mid = Int(1500/hz)
+    var flux = 0.0
+    if let p = prev { for i in lo..<hi { let d = Double(mag[i] - p[i]); if d > 0 { flux += d*(i < bass ? 6 : i < mid ? 1 : 0.3) } } }
+    prev = mag; env.append((t, flux)); while let f = env.first, t - f.0 > 8 { env.removeFirst() }
+    if t - lastEst > 0.5 && env.count > 200 { lastEst = t; estimate(t) } }
+  private func estimate(_ t: Double) {
+    /* onset strength resampled at 200 Hz over the last 8 s, the part above its mean */
+    let N = 1600, dt = 0.005; var x = [Double](repeating: 0, count: N), j = 0
+    for k in 0..<N { let tk = t - 8 + Double(k + 1)*dt; while j < env.count - 1 && env[j + 1].0 <= tk { j += 1 }; x[k] = env[j].1 }
+    let mean = x.reduce(0, +)/Double(N); for k in 0..<N { x[k] = max(0, x[k] - mean) }
+    let zero = x.reduce(0) { $0 + $1*$1 }; guard zero > 1e-12 else { conf *= 0.8; return }
+    /* tempo: the autocorrelation peak between 70 and 171 bpm, leaning towards 115; refined between lags */
+    let l0 = 70, l1 = 172; var ac = [Double](repeating: 0, count: l1 + 2)
+    for lag in (l0 - 1)...(l1 + 1) { var s = 0.0; for k in lag..<N { s += x[k]*x[k - lag] }; ac[lag] = s }
+    var best = 0.0, lagB = 0
+    for lag in l0...l1 { let bpm = 60/(Double(lag)*dt), w = exp(-pow(log2(bpm/115), 2)*1.4); if ac[lag]*w > best { best = ac[lag]*w; lagB = lag } }
+    guard lagB > 0 else { return }
+    let a = ac[lagB - 1], b = ac[lagB], c = ac[lagB + 1], den = a - 2*b + c
+    let per = (Double(lagB) + (den < 0 ? max(-0.5, min(0.5, 0.5*(a - c)/den)) : 0))*dt
+    /* phase: the comb that best fits the onsets, recent beats counting most */
+    let steps = Int(per/dt); var phB = 0, sB = -1.0
+    for ph in 0..<steps { var s = 0.0, m = 0.0
+      while true { let k = Int((Double(N - 1 - ph) - m*per/dt).rounded()); if k < 1 { break }
+        s += (x[k] + 0.5*x[k - 1] + 0.5*(k + 1 < N ? x[k + 1] : 0))*exp(-m*0.18); m += 1 }
+      if s > sB { sB = s; phB = ph } }
+    let lastBeat = t - Double(phB)*dt, c2 = min(1, best/zero*2.2)
+    /* glide, don't jump: keep the running beat count, nudge period and phase */
+    if conf < 0.2 || abs(per - period) > 0.06 { period = per; t0 = lastBeat }
+    else { period += (per - period)*0.5; let bb = beat(lastBeat), err = bb - bb.rounded(); t0 += err*period*0.5 }
+    conf += (c2 - conf)*0.5 }
+}
+
+/* "Dance to the Beat" (asked for, macOS 14.2 and later): a tap on what the Mac plays, mixed down to one channel and
+   kept only as the last few thousand samples in memory, for the beat tracker. Nothing is recorded or sent */
+@available(macOS 14.2, *)
+final class SystemEar {
+  private var tap = AudioObjectID(kAudioObjectUnknown), agg = AudioObjectID(kAudioObjectUnknown), proc: AudioDeviceIOProcID? = nil
+  private let lock = NSLock(); private var ring = [Float](repeating: 0, count: 8192), w = 0
+  private(set) var rate = 48000.0
+  var running: Bool { proc != nil }
+  func start() -> Bool {
+    guard !running else { return true }
+    var me = [AudioObjectID](); var pid = getpid(), obj = AudioObjectID(0), sz = UInt32(MemoryLayout<AudioObjectID>.size)
+    var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    if AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &a, UInt32(MemoryLayout<pid_t>.size), &pid, &sz, &obj) == noErr, obj != 0 { me = [obj] }
+    let d = CATapDescription(stereoGlobalTapButExcludeProcesses: me); d.uuid = UUID(); d.isPrivate = true; d.muteBehavior = .unmuted
+    guard AudioHardwareCreateProcessTap(d, &tap) == noErr else { return false }
+    var f = AudioStreamBasicDescription(); sz = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+    a.mSelector = kAudioTapPropertyFormat
+    if AudioObjectGetPropertyData(tap, &a, 0, nil, &sz, &f) == noErr, f.mSampleRate > 0 { rate = f.mSampleRate }
+    let ch = Int(max(1, f.mChannelsPerFrame)), inter = f.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
+    let desc: [String: Any] = [kAudioAggregateDeviceNameKey: "Roomie ear", kAudioAggregateDeviceUIDKey: UUID().uuidString,
+                               kAudioAggregateDeviceIsPrivateKey: true, kAudioAggregateDeviceTapAutoStartKey: true,
+                               kAudioAggregateDeviceTapListKey: [[kAudioSubTapUIDKey: d.uuid.uuidString]]]
+    guard AudioHardwareCreateAggregateDevice(desc as CFDictionary, &agg) == noErr else { stop(); return false }
+    let ok = AudioDeviceCreateIOProcIDWithBlock(&proc, agg, nil) { [weak self] _, input, _, _, _ in self?.take(input, ch: ch, inter: inter) }
+    guard ok == noErr, let p = proc, AudioDeviceStart(agg, p) == noErr else { stop(); return false }
+    return true }
+  func stop() {
+    if let p = proc { AudioDeviceStop(agg, p); AudioDeviceDestroyIOProcID(agg, p) }; proc = nil
+    if agg != kAudioObjectUnknown { AudioHardwareDestroyAggregateDevice(agg) }; agg = AudioObjectID(kAudioObjectUnknown)
+    if tap != kAudioObjectUnknown { AudioHardwareDestroyProcessTap(tap) }; tap = AudioObjectID(kAudioObjectUnknown) }
+  private func take(_ input: UnsafePointer<AudioBufferList>, ch: Int, inter: Bool) {
+    let list = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+    guard let b0 = list.first, let d0 = b0.mData else { return }
+    lock.lock(); defer { lock.unlock() }
+    if inter || list.count == 1 { let c = inter ? max(1, ch) : 1, frames = Int(b0.mDataByteSize)/4/c, p = d0.assumingMemoryBound(to: Float.self)
+      for i in 0..<frames { var s: Float = 0; for k in 0..<c { s += p[i*c + k] }; ring[w] = s/Float(c); w = (w + 1) % ring.count } }
+    else { let frames = Int(b0.mDataByteSize)/4
+      for i in 0..<frames { var s: Float = 0; for b in list { if let d = b.mData { s += d.assumingMemoryBound(to: Float.self)[i] } }; ring[w] = s/Float(list.count); w = (w + 1) % ring.count } } }
+  func latest(_ n: Int) -> [Float] { lock.lock(); defer { lock.unlock() }
+    return (0..<n).map { ring[(w - n + $0 + ring.count) % ring.count] } }
+}
+
+enum DanceMode: String { case beat, own, off }
 
 // MARK: - the rules
 
@@ -797,6 +1026,7 @@ struct Senses {
   var shake = 0.0, rage = false
   var gaze = CGPoint.zero                         /* where you are, as a direction of length 0..1 */
   var islandDir: CGPoint? = nil                   /* where the island is, from the eyes (y down), when it shows */
+  var beat: Double? = nil, beatSure = 0.0, beatLen = 0.5   /* 0.9: a song is on; where its beat is, and how sure that is */
 }
 enum Attend { case none, hint(Double), card, far
   var isNone: Bool { if case .none = self { return true }; return false } }
@@ -829,11 +1059,14 @@ final class Brain {
 
   /* the Playground can make them feel things on purpose, for a few seconds */
   var demoHotUntil = 0.0, demoSleepUntil = 0.0, demoHungryUntil = 0.0
+  /* dancing fades in and out; the beat keeps counting while it fades so they don't freeze mid-move */
+  var danceAmt = 0.0, danceBeat = 0.0, danceSure = 0.0, dancePeriod = 0.5
   func step(now t: Double, dt: Double, s s0: Senses, who: Who, attend: Attend) -> FaceLook {
     var s = s0
     if t < demoSleepUntil { s.idle = Brain.awayAfter + 120 }
     if t < demoHotUntil { s.hot = true }
     if t < demoHungryUntil { s.battery = 14; s.charging = false }
+    if s.beat != nil { s.idle = max(0, s.idle - 600) }                           /* a song on: they stay up dancing ten minutes longer */
     if s.idle > Brain.awayAfter { asleep = true; away = s.idle }
     else if asleep { asleep = false; startleUntil = t + 0.35; love(t + 0.35); happyUntil = loveAt + Brain.loveFor + min(3, 0.8 + away/1200); cameBack = true }
     drowsy = asleep ? 1 : sm(150, Brain.awayAfter, s.idle)
@@ -917,10 +1150,17 @@ final class Brain {
     /* ignored for a minute: they hop up and down to get your attention */
     let lu = t - loveAt; if lu >= 0 && lu < 0.35 { f.hop = -CGFloat(sin(lu/0.35 * .pi))*2.5 }      /* a little jump as the hearts pop */
     if insisting { let ph = t.truncatingRemainder(dividingBy: 2.2); f.hop = ph < 0.8 ? -CGFloat(abs(sin(ph*Double.pi*2.5)))*3 : 0 }
+    /* a song is on: they dance, unless something else has their attention */
+    let canDance = s.beat != nil && !asleep && drowsy < 0.6 && !sad && !wince && dz <= 0.5 && !suspect && heart == 0 && attend.isNone && !wide
+    if let b = s.beat { danceBeat = b; danceSure = s.beatSure; dancePeriod = s.beatLen } else { danceBeat += dt/max(0.25, dancePeriod) }
+    danceAmt += ((canDance ? 1 : 0) - danceAmt)*min(1, dt*(canDance ? 2.5 : 4))
+    if danceAmt > 0.002 {
+      applyDance(&f, beat: danceBeat, sure: danceSure, period: dancePeriod, who: who, amt: danceAmt)
+      p[0] = CGPoint(x: f.l.px, y: f.l.py); p[1] = CGPoint(x: f.r.px, y: f.r.py); v = [.zero, .zero] }   /* the gaze eases back to you from where the dance left it */
     return f
   }
   func busy(_ t: Double) -> Bool {
-    if dizzy > 0.02 || hot > 0.02 || hungry > 0.02 || crying || insisting || asleep || t < max(demoHotUntil, demoSleepUntil, demoHungryUntil) + 1 { return true }
+    if danceAmt > 0.002 || dizzy > 0.02 || hot > 0.02 || hungry > 0.02 || crying || insisting || asleep || t < max(demoHotUntil, demoSleepUntil, demoHungryUntil) + 1 { return true }
     if t < max(happyUntil, winceUntil, startleUntil, cryUntil, suspectUntil, loveAt + Brain.loveFor) + 0.3 || t < blinkUntil + 0.15 || flutterAt > 0 { return true }
     return hypot(v[0].x, v[0].y) > 0.05 || hypot(v[1].x, v[1].y) > 0.05 }
 }
@@ -1516,7 +1756,7 @@ if let i = args.firstIndex(of: "--tele"), i + 1 < args.count {
 }
 if let i = args.firstIndex(of: "--say"), i + 1 < args.count {
   /* the passing remarks: each roommate, under the notch, in three moods */
-  let notch = CGSize(width: 208, height: 37.5), rows: [(Who, Reaction)] = [(.madam, .back), (.madam, .cry), (.gentleman, .dizzy), (.gentleman, .hot)]
+  let notch = CGSize(width: 208, height: 37.5), rows: [(Who, Reaction)] = [(.madam, .back), (.madam, .cry), (.gentleman, .dizzy), (.gentleman, .hot), (.madam, .music), (.gentleman, .music)]
   let W: CGFloat = 560, RH = notch.height + 40 + 40
   let img = bitmap(CGSize(width: W, height: RH*CGFloat(rows.count))) { g in
     g.setFillColor(rgb(0.2, 0.22, 0.27)); g.fill(CGRect(x: 0, y: 0, width: W, height: RH*CGFloat(rows.count)))
@@ -1524,7 +1764,7 @@ if let i = args.firstIndex(of: "--say"), i + 1 < args.count {
       let text = Lines.react(row.1, row.0), L = islandLayout(.say, text: text), w = max(L.size.width, notch.width + 2*EAR)
       var look = FaceLook()
       switch row.1 { case .back: look.l.heart = 1.1; look.r.heart = 1.1; case .cry: look.tear = 0.3; look.l.ang = -0.42; look.r.ang = 0.42; look.l.up = 0.3; look.r.up = 0.3
-                     case .dizzy: look.l.spiral = 1; look.r.spiral = 1; case .hot: look.sweat = 0.5; case .battery: break }
+                     case .dizzy: look.l.spiral = 1; look.r.spiral = 1; case .hot: look.sweat = 0.5; case .battery: break; case .music: look.l.closed = .joy; look.r.closed = .joy }
       g.saveGState(); g.translateBy(x: (W - w - 12)/2, y: RH*CGFloat(k) + 10)
       paintIsland(g, size: CGSize(width: w, height: notch.height + L.size.height), phase: .say, text: text, buttons: [], who: row.0, alpha: 1, t: 1, left: 0, hover: -1, notch: notch, look: look, age: k == 0 ? 0.5 : k == 1 ? 0.85 : 99)
       g.restoreGState() } }
@@ -1696,6 +1936,42 @@ if let i = args.firstIndex(of: "--avatar"), i + 1 < args.count {
   }
   writePNG(img, args[i + 1]); print("wrote", args[i + 1]); exit(0)
 }
+if let i = args.firstIndex(of: "--dance"), i + 1 < args.count {
+  /* a filmstrip of the dance: both roommates at moments through an eight-bar phrase, big and at menu-bar size, on a dark bar */
+  _ = NSApplication.shared
+  let beats: [Double] = [0, 0.5, 1, 2, 6.5, 23.2, 24.5, 28.3], labels = ["beat", "after", "beat", "sway", "pleased", "wink / —", "— / brow", "hearts / savour"]
+  let cw: CGFloat = 150, W = cw*CGFloat(beats.count), rowH: CGFloat = 150, smallH: CGFloat = 40
+  let img = bitmap(CGSize(width: W, height: (rowH + smallH)*2 + 24)) { g in
+    g.setFillColor(rgb(0.1, 0.1, 0.12)); g.fill(CGRect(x: 0, y: 0, width: W, height: (rowH + smallH)*2 + 24))
+    for (k, lab) in labels.enumerated() { drawText(g, attributed(lab, 11, .medium, NSColor(white: 1, alpha: 0.5), center: true), in: CGRect(x: CGFloat(k)*cw, y: 5, width: cw, height: 16)) }
+    for (r, w) in [Who.madam, .gentleman].enumerated() {
+      let y0 = 24 + CGFloat(r)*(rowH + smallH)
+      for (k, b) in beats.enumerated() {
+        var f = FaceLook(); f.l.px = 0; f.r.px = 0; f.l.py = 0; f.r.py = 0
+        applyDance(&f, beat: b, sure: 1, period: 60/112, who: w, amt: 1)
+        let x0 = CGFloat(k)*cw, fh: CGFloat = 52, fw = fh*2.22
+        g.setFillColor(rgb(0, 0, 0)); g.fill(CGRect(x: x0 + 2, y: y0, width: cw - 4, height: rowH - 4))
+        drawFace(g, in: CGRect(x: x0 + cw/2 - fw/2, y: y0 + rowH/2 - fh/2 + 6, width: fw, height: fh), look: f, who: w, dark: true)
+        g.setFillColor(rgb(0.15, 0.15, 0.17)); g.fill(CGRect(x: x0 + 2, y: y0 + rowH, width: cw - 4, height: smallH - 6))
+        let eh = EyesView.eyeH; drawFace(g, in: CGRect(x: x0 + cw/2 - eh*1.11, y: y0 + rowH + (smallH - 6)/2 - eh/2, width: eh*2.22, height: eh), look: f, who: w, dark: true) } } }
+  writePNG(img, args[i + 1]); print("wrote", args[i + 1]); exit(0)
+}
+if args.contains("--beattest") {
+  /* the beat tracker on made-up drums: a kick on every beat, a snare on 2 and 4, hats, and noise; prints what it hears */
+  for bpm in [84.0, 112.0, 128.0, 150.0] {
+    let rate = 48000.0, period = 60/bpm, tr = BeatTracker(); var sig = [Float](repeating: 0, count: Int(rate*12))
+    for i in 0..<sig.count { let t = Double(i)/rate, ph = t.truncatingRemainder(dividingBy: period), half = t.truncatingRemainder(dividingBy: period/2)
+      var x = Float.random(in: -0.02...0.02)
+      x += Float(0.8*exp(-ph*30)*sin(2*Double.pi*(60 + 90*exp(-ph*25))*ph))                       /* kick */
+      if Int(t/period) % 2 == 1 { x += Float.random(in: -1...1)*Float(0.3*exp(-ph*40)) }           /* snare */
+      x += Float.random(in: -1...1)*Float(0.08*exp(-half*120))                                      /* hats */
+      sig[i] = x }
+    var t = 0.0; while t < 11.9 { let end = Int(t*rate); if end >= 1024 { tr.feed(Array(sig[(end - 1024)..<end]), rate: rate, t: t) }; t += 1.0/60 }
+    var ph = (tr.beat(12) - 12/period).truncatingRemainder(dividingBy: 1); if ph < -0.5 { ph += 1 }
+    if args.contains("-v") { let g = (tr.t0/period).truncatingRemainder(dividingBy: 1); print(String(format: "  t0 %.3f on the grid at %.2f; period %.4f vs %.4f", tr.t0, g, tr.period, period)) }
+    print(String(format: "played %3.0f bpm: heard %5.1f bpm, sure %.2f, phase error %+.2f beat", bpm, 60/tr.period, tr.conf, ph > 0.5 ? ph - 1 : ph)) }
+  exit(0)
+}
 if args.contains("--selftest") {
   /* a made-up working day through the rules, one second at a time; every nudge is accepted at once */
   let c = Coach(fast: false); var t = 0.0
@@ -1842,7 +2118,8 @@ final class Playground {
       ("Low battery", { app.brain.demoHungryUntil = now() + 5; app.say(.battery, now: now()) }),
       ("Sleep, wake", { app.brain.demoSleepUntil = now() + 4 }),
       ("Nudge", { app.demoNudge() }),
-      ("Caught", { app.caught(now()) })]
+      ("Caught", { app.caught(now()) }),
+      ("Dance", { app.demoDance() })]
     /* buttons in rows that wrap, so none is cut off at the window's edge */
     func row(_ items: [NSControl], y: CGFloat) { var x: CGFloat = 12, yy = y
       for v in items { v.sizeToFit(); if x + v.frame.width > W - 12 { x = 12; yy -= 38 }
@@ -1860,7 +2137,7 @@ final class Playground {
   func stop() { steps.forEach { $0.cancel() }; steps = [] }
   func playAll(_ app: App, _ acts: [(String, () -> Void)]) {
     stop()
-    let gaps: [Double] = [3, 1.6, 6.5, 5, 5.5, 5.5, 8, 9, 8]                /* how long each one is given before the next */
+    let gaps: [Double] = [3, 1.6, 6.5, 5, 5.5, 5.5, 8, 9, 12, 15]                /* how long each one is given before the next */
     var at = 0.0
     for (i, a) in acts.enumerated() {
       let w = DispatchWorkItem { a.1(); app.wake() }; steps.append(w)
@@ -1872,7 +2149,9 @@ final class App: NSObject, NSApplicationDelegate {
   var item: NSStatusItem!, view = EyesView(), brain = Brain(), coach = Coach(fast: FAST), island = Island(), rain = Rain()
   var who: Who? = Who(rawValue: defaults.string(forKey: "who") ?? "") { didSet { view.who = who; island.who = who; lastSig = [] } }
   var last = CACurrentMediaTime(), coachLast = CACurrentMediaTime(), lastMouse = NSEvent.mouseLocation, sign = 0.0, reversals: [Double] = [], clicks: [Double] = []
-  var movedAt = 0.0, lastSig: [Int] = [], dropAt = 0.0, dropLeft = true
+  var movedAt = 0.0, lastSig: [Int] = [], dropAt = 0.0, dropLeft = true, lastImgAt = 0.0
+  /* 0.9: the face is a layer inside the status button; swapping its contents is cheap, setting the button's image every frame cost a twelfth of a core */
+  let faceLayer = CALayer(); var lastDark = true
   var signals: [DispatchSourceSignal] = []
   lazy var playground = Playground(self)
   var pgSig: [Int] = []
@@ -1888,6 +2167,49 @@ final class App: NSObject, NSApplicationDelegate {
   /* manners: on a call or in full screen they keep counting but say nothing; the quiet hour is the user's own */
   var busyElsewhere = false, quietUntil: Date? = nil, lastDim = false, lastTele: [Int] = []
   var quiet: Bool { busyElsewhere || (quietUntil.map { Date() < $0 } ?? false) }
+  /* 0.9: music. They dance in their own way when a player says a song is on; to the beat if asked to listen */
+  let music = Music(), tracker = BeatTracker()
+  var danceMode = DanceMode(rawValue: defaults.string(forKey: "dance") ?? "") ?? .own
+  var ear: AnyObject? = nil, earTriedAt = -1e9, outAt = -1e9, outCheck = -1e9, outLat = 0.0
+  var demoDanceAt = -1e9, demoDanceUntil = -1e9, lastMusicSay = -1e9
+  var earRunning: Bool { if #available(macOS 14.2, *) { return (ear as? SystemEar)?.running ?? false }; return false }
+  @discardableResult func listen(_ on: Bool) -> Bool {
+    guard #available(macOS 14.2, *) else { return false }
+    if !on { (ear as? SystemEar)?.stop(); tracker.reset(); return true }
+    let e = (ear as? SystemEar) ?? SystemEar(); ear = e; earTriedAt = CACurrentMediaTime(); let ok = e.start()
+    if LOG { FileHandle.standardError.write("ear \(ok ? "listening" : "failed")\n".data(using: .utf8)!) }
+    return ok }
+  /* where the beat is now, if a song is on and they may dance */
+  var hearing = false, clockBeat = 0.0, clockPeriod = 0.5, clockSure = 0.0, clockAt = -1e9
+  func rawBeat(_ now: Double) -> (Double, Double, Double)? {
+    if now < demoDanceUntil { let len = 60.0/112; return ((now - demoDanceAt)/len, 1, len) }
+    guard danceMode != .off, who != nil, now - outAt < 3, !busyElsewhere else { hearing = false; return nil }
+    /* a song heard in the sound: start when fairly sure, keep going until really unsure, so the dance doesn't flicker */
+    hearing = danceMode == .beat && earRunning && tracker.conf > (hearing ? 0.18 : 0.4)
+    guard music.playing || hearing else { return nil }
+    if hearing { return (tracker.beat(now), sm(0.25, 0.65, tracker.conf), tracker.period) }
+    return (now*1.55, 0, 1/1.55) }
+  /* the dance's own clock: it never jumps; it glides towards the tempo and the phase it hears (the tracker re-locks now and then) */
+  func beatNow(_ now: Double) -> (Double, Double, Double)? {
+    guard let r = rawBeat(now) else { return nil }
+    let dt = min(0.1, now - clockAt); clockAt = now
+    if dt <= 0 || dt >= 0.1 { clockBeat = brain.danceBeat; clockPeriod = r.2; clockSure = r.1 }      /* (re)starting: carry on from where the dance is */
+    clockPeriod += (r.2 - clockPeriod)*min(1, dt*1.5)
+    clockBeat += dt/max(0.25, clockPeriod)
+    var err = (r.0 - clockBeat).truncatingRemainder(dividingBy: 1); if err > 0.5 { err -= 1 } else if err < -0.5 { err += 1 }
+    clockBeat += err*min(1, dt*2.5)
+    clockSure += (r.1 - clockSure)*min(1, dt*2)
+    return (clockBeat, clockSure, clockPeriod) }
+  /* a song comes on after three quiet minutes (from a player or heard in the sound): one light line, at most every 20 minutes */
+  var songAt: Double? = nil, songEnd = -1e9
+  func song(_ on: Bool, now: Double) {
+    if on && songAt == nil { songAt = now
+      if now - songEnd > 180 && now - lastMusicSay > 20*60 && now >= demoDanceUntil, let w = who {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in guard let s = self, s.songAt != nil else { return }
+          if s.say(.music, now: CACurrentMediaTime(), text: Lines.music(w, artist: s.music.playing ? s.music.artist : nil)) { s.lastMusicSay = now } } } }
+    else if !on && songAt != nil { songAt = nil; songEnd = now } }
+  func demoDance() { let now = CACurrentMediaTime(); demoDanceAt = now; demoDanceUntil = now + 14; wake()
+    if let w = who { say(.music, now: now, text: Lines.music(w, artist: nil)) } }
 
   func applicationDidFinishLaunching(_ n: Notification) {
     if CommandLine.arguments.contains("--playground") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.playground.show() } }
@@ -1899,7 +2221,9 @@ final class App: NSObject, NSApplicationDelegate {
       signal(sig, SIG_IGN); let src = DispatchSource.makeSignalSource(signal: sig, queue: .main); src.setEventHandler(handler: act); src.resume(); signals.append(src) }
     let h = NSStatusBar.system.thickness
     item = NSStatusBar.system.statusItem(withLength: EyesView.eyeH*2.22 + 10); _ = h
-    if let b = item.button { b.imagePosition = .imageOnly; b.image = glyphImage(FaceLook(), who: who); b.toolTip = "Roomie"
+    if let b = item.button { b.imagePosition = .imageOnly; b.toolTip = "Roomie"
+      b.wantsLayer = true; faceLayer.frame = b.bounds; faceLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+      faceLayer.contentsGravity = .center; faceLayer.contentsScale = b.window?.backingScaleFactor ?? 2; b.layer?.addSublayer(faceLayer)
       b.target = self; b.action = #selector(clicked); b.sendAction(on: [.leftMouseUp, .rightMouseUp]) }
     view.who = who; island.who = who
     island.onOpen = { [weak self] in self?.openCard() }
@@ -1934,9 +2258,9 @@ final class App: NSObject, NSApplicationDelegate {
   /* pleased with you: stars out of the face in the card, and twinkles round the eyes in the bar */
   /* a passing remark from the notch, for the rare moments: not on calls, not in the quiet hour, never over a nudge, at most every two minutes */
   var lastSay = -1e9, lastCry = 0.0, wasDizzy = false, saidBattery = false, lastHot = -1e9, wasHot = false
-  func say(_ r: Reaction, now: Double) {
-    guard let w = who, island.phase == .hidden, !quiet, now - lastSay > (playground.visible ? 3 : 120) else { return }
-    lastSay = now; island.go(.say, note: Lines.react(r, w), now: now) }
+  @discardableResult func say(_ r: Reaction, now: Double, text: String? = nil) -> Bool {
+    guard let w = who, island.phase == .hidden, !quiet, now - lastSay > (playground.visible ? 3 : 120) else { return false }
+    lastSay = now; island.go(.say, note: text ?? Lines.react(r, w), now: now); return true }
   func reactions(now: Double) {
     if brain.cameBack { say(.back, now: now) }
     if brain.cryUntil > lastCry + 0.5 && brain.cryUntil > now { lastCry = brain.cryUntil; say(.cry, now: now) }
@@ -1982,6 +2306,14 @@ final class App: NSObject, NSApplicationDelegate {
       let it = NSMenuItem(title: title, action: #selector(pickNudges(_:)), keyEquivalent: ""); it.target = self; it.representedObject = mode.rawValue
       it.state = coach.mode == mode ? .on : .off; sub.addItem(it) }
     nm.submenu = sub; m.addItem(nm)
+    /* Dancing: in their own way needs nothing; to the beat asks macOS once to let them hear the sound */
+    let dm = NSMenuItem(title: "Dancing", action: nil, keyEquivalent: ""), dsub = NSMenu()
+    var modes: [(String, DanceMode)] = [("In Their Own Way", .own), ("Off", .off)]
+    if #available(macOS 14.2, *) { modes.insert(("To the Beat", .beat), at: 0) }
+    for (title, mode) in modes {
+      let it = NSMenuItem(title: title, action: #selector(pickDance(_:)), keyEquivalent: ""); it.target = self; it.representedObject = mode.rawValue
+      it.state = danceMode == mode ? .on : .off; dsub.addItem(it) }
+    dm.submenu = dsub; m.addItem(dm)
     let qi = NSMenuItem(title: qt, action: #selector(toggleQuiet), keyEquivalent: ""); qi.target = self
     qi.state = quietUntil.map { Date() < $0 } == true ? .on : .off; m.addItem(qi)
     let pg = NSMenuItem(title: "Playground…", action: #selector(openPlayground), keyEquivalent: ""); pg.target = self; m.addItem(pg)
@@ -1997,6 +2329,14 @@ final class App: NSObject, NSApplicationDelegate {
     /* a card about something now switched off folds away */
     if island.phase == .open, let k = island.card?.kind, m == .none || (m == .fewer && k == .eyes) { coach.later(now: CACurrentMediaTime()); island.go(.hidden, now: CACurrentMediaTime()) }
   }
+  @objc func pickDance(_ s: NSMenuItem) {
+    guard let r = s.representedObject as? String, let m = DanceMode(rawValue: r) else { return }
+    danceMode = m; defaults.set(r, forKey: "dance")
+    if m == .beat { if !listen(true) { danceMode = .own; defaults.set(DanceMode.own.rawValue, forKey: "dance")
+        let a = NSAlert(); a.messageText = "Roomie can't hear the music."
+        a.informativeText = "To dance to the beat, let Roomie hear your Mac's sound: System Settings > Privacy & Security > Screen & System Audio Recording > System Audio Recording Only > Roomie.\n\nUntil then they dance in their own way."
+        NSApp.activate(ignoringOtherApps: true); a.runModal() } }
+    else { listen(false) } }
   @objc func toggleQuiet() { if let u = quietUntil, Date() < u { quietUntil = nil } else { quietUntil = Date().addingTimeInterval(3600) } }
   @objc func pick(_ s: NSMenuItem) { if let r = s.representedObject as? String, let w = Who(rawValue: r), w != who { choose(w) } }
   @objc func toggleLogin() {
@@ -2008,6 +2348,7 @@ final class App: NSObject, NSApplicationDelegate {
   // ---- what they read
   func readSlow() {
     busyElsewhere = micInUse() || frontIsFullScreen()
+    outLat = outputLatency()
     battery = nil
     let snap = IOPSCopyPowerSourcesInfo().takeRetainedValue()
     for ps in IOPSCopyPowerSourcesList(snap).takeRetainedValue() as [CFTypeRef] {
@@ -2042,11 +2383,20 @@ final class App: NSObject, NSApplicationDelegate {
     watchWalk(now: now, idle: FAST ? 0 : idle)
     if let w = item.button?.window, let scr = w.screen ?? NSScreen.main { island.place(x: w.frame.midX, top: min(w.frame.minY, scr.visibleFrame.maxY), notch: notchRect(scr)) }
     if hypot(here.x - lastMouse.x, here.y - lastMouse.y) > 0.5 { movedAt = now }
+    /* music: is sound going out (once a second), and, when asked to listen, where its beat is */
+    if now - outCheck > 1 { outCheck = now; if outputRunning() { outAt = now } }
+    if danceMode == .beat {
+      let sounding = now - outAt < 15
+      if sounding && !earRunning && now - earTriedAt > 30 { listen(true) } else if !sounding && earRunning { listen(false) }
+      if #available(macOS 14.2, *), now - outAt < 3, let e = ear as? SystemEar, e.running { tracker.feed(e.latest(1024), rate: e.rate, t: now + outLat) } }
+    let bn = beatNow(now); song(bn != nil, now: now)
+    if LOG && Int(now) != Int(now - 1.0/60) { FileHandle.standardError.write("ear \(earRunning ? "on" : "off") conf \(String(format: "%.2f bpm %.0f", tracker.conf, 60/tracker.period)) out \(now - outAt < 3) | dance \(bn.map { String(format: "beat %.1f sure %.2f", $0.0, $0.1) } ?? "none") amt \(String(format: "%.2f", brain.danceAmt))\n".data(using: .utf8)!) }
     let pgOn = playground.visible
-    if now - movedAt > 1.2 && !brain.busy(now) && !island.animating && now - island.leftAt > 0.8 && !pgOn && now - last < 0.25 { return }
+    if now - movedAt > 1.2 && !brain.busy(now) && bn == nil && !island.animating && now - island.leftAt > 0.8 && !pgOn && now - last < 0.25 { return }
     let dt = min(0.05, now - last); last = now
     var s = Senses()
     s.idle = idle; s.hour = hour; s.battery = battery; s.charging = charging; s.hot = isHot
+    if let b = bn { s.beat = b.0; s.beatSure = b.1; s.beatLen = b.2 }
     if let w = item.button?.window { let f = w.frame, dx = here.x - f.midX, dy = f.midY - here.y, dist = max(1, hypot(dx, dy)), k = min(1, dist/420)
       s.gaze = CGPoint(x: dx/dist*k, y: dy/dist*k) }
     if island.showing, let w = item.button?.window { let c = island.center, dx = c.x - w.frame.midX, dy = w.frame.midY - c.y, d = max(1, hypot(dx, dy))
@@ -2061,7 +2411,7 @@ final class App: NSObject, NSApplicationDelegate {
     let attend: Attend
     switch island.phase { case .hint: attend = .hint(island.since); case .open, .message, .choose, .caught: attend = .card; case .counting: attend = .far; case .hidden, .say: attend = .none }
     let look = brain.step(now: now, dt: dt, s: s, who: who ?? .madam, attend: attend), sig = signature(look)
-    island.look = look
+    var il = look; il.beat = nil; island.look = il                       /* no notes in the pill: they would sit on the words */
     /* on a display that is not the active one, the menu bar dims its icons; so do they */
     let dim: Bool = { guard NSScreen.screens.count > 1, let s = item.button?.window?.screen, let m = NSScreen.main else { return false }; return s != m }()
     /* teleport: while their face is in the island the bar is empty; they leave with a swell and a squeeze, come back with a pop */
@@ -2073,8 +2423,14 @@ final class App: NSObject, NSApplicationDelegate {
     else { let u = now - island.leftAt - 0.12
       if u < 0 { tScale = 0 } else if u < 0.6 { tScale = CGFloat(1 - exp(-9*u)*cos(12*u)); tPuff = u } }
     let tKey = [Int((tScale*40).rounded()), Int((tSquash*20).rounded()), tPuff >= 0 && tPuff < 0.35 ? Int(tPuff*30) : -1]
-    if sig != lastSig || dim != lastDim || tKey != lastTele { lastSig = sig; lastDim = dim; lastTele = tKey
-      item.button?.image = glyphImage(look, who: who, dim: dim, scale: tScale, squash: tSquash, puff: tPuff) }
+    /* dancing changes the face every frame; the menu bar gets it at most 30 times a second */
+    let barDark = item.button.map { $0.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua } ?? true
+    let danceThrottle = brain.danceAmt > 0.002 && now - lastImgAt < 1.0/60 && tKey == lastTele && dim == lastDim
+    if !danceThrottle && (sig != lastSig || dim != lastDim || tKey != lastTele || barDark != lastDark) { lastSig = sig; lastDim = dim; lastTele = tKey; lastImgAt = now; lastDark = barDark
+      let px = item.button?.window?.backingScaleFactor ?? 2
+      CATransaction.begin(); CATransaction.setDisableActions(true)
+      faceLayer.contentsScale = px; faceLayer.contents = glyphCG(look, who: who, dim: dim, scale: tScale, squash: tSquash, puff: tPuff, dark: barDark, px: px)
+      CATransaction.commit() }
     /* the Playground is big: every frame, not only when the menu-bar picture changes */
     /* the Playground is big: it redraws on a four times finer step than the menu bar, and only when something moved */
     if pgOn { let fs = signature(look, fine: 4); if fs != pgSig { pgSig = fs; playground.view.look = look; playground.view.who = who; playground.view.refresh() } }

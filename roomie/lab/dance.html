@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roomie dances</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0e0f14; color: #f2f1ec; font: 500 15px/1.5 system-ui, sans-serif; }
+  .bar { height: 24px; background: #1d1f27; display: flex; align-items: center; position: relative; }
+  .bar .notch { position: absolute; left: 50%; top: 0; width: 185px; height: 24px; margin-left: -92px; background: #000; border-radius: 0 0 10px 10px; }
+  .bar canvas { position: absolute; left: calc(50% + 115px); top: 0; width: 90px; height: 24px; }
+  .bar .sys { position: absolute; right: 14px; font-size: 13px; color: #d8d8de; }
+  main { max-width: 980px; margin: 0 auto; padding: 22px 20px 40px; display: grid; gap: 18px; }
+  .stage { background: #000; border-radius: 26px; height: 300px; position: relative; }
+  .stage canvas { width: 100%; height: 100%; display: block; }
+  .zoom { background: #1d1f27; border-radius: 14px; height: 96px; position: relative; overflow: hidden; }
+  .zoom canvas { width: 100%; height: 100%; display: block; }
+  .tag { position: absolute; left: 14px; top: 10px; font-size: 12px; color: #8d90a0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: inherit; color: #f2f1ec; background: #262833; border: 1px solid #343747; border-radius: 999px; padding: 8px 15px; cursor: pointer; }
+  button[aria-pressed="true"], button.on { background: #f2f1ec; color: #0e0f14; border-color: #f2f1ec; }
+  input[type=range] { width: 180px; }
+  .note { color: #8d90a0; font-size: 13px; }
+  .meter { display: inline-flex; gap: 4px; }
+  .meter i { width: 10px; height: 10px; border-radius: 50%; background: #343747; }
+  .meter i.on { background: #b1a6f5; }
+  .hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="notch"></div><canvas id="bar"></canvas><span class="sys">Thu 26 Nov  11:02</span></div>
+<main>
+  <div class="row">
+    <button data-who="madam">Madam</button><button data-who="gentleman">Gentleman</button>
+    <span style="width:14px"></span>
+    <button class="mode" data-mode="groove">Own groove</button>
+    <button class="mode" data-mode="drums">On the beat: drums</button>
+    <button class="mode" data-mode="mic">On the beat: your music</button>
+    <button class="mode" data-mode="off">Silence</button>
+  </div>
+  <div class="row" id="drumrow"><span class="note">Tempo</span><input id="bpm" type="range" min="70" max="170" value="112"><span id="bpmv" class="note"></span></div>
+  <div class="row"><span class="note" id="status"></span><span class="meter" id="meter"><i></i><i></i><i></i><i></i></span></div>
+  <div class="stage"><span class="tag">big</span><canvas id="big"></canvas></div>
+  <div class="zoom"><span class="tag">menu bar ×4</span><canvas id="zoom"></canvas></div>
+  <p class="note">Own groove is what everyone gets with no permission: they only know a song is on, so they sway loosely, no sharp hits that could clash with it.
+  On the beat is the opt-in: in the app it hears the system sound; here "your music" listens through the microphone, so play Spotify out loud.</p>
+</main>
+<canvas data-roomie class="hidden"></canvas><canvas id="rain" class="hidden"></canvas>
+<script src="../../site/roomie.js?v=dance1"></script>
+<script>
+(() => {
+  const R = window.Roomie, D = Math.min(2, devicePixelRatio || 1), T = () => performance.now()/1000;
+  const $ = s => document.querySelector(s);
+  let mode = "groove", status = "";
+
+  /* ---------- the beat clock: where we are, in beats; how sure we are ---------- */
+  const clock = { t0: 0, period: 60/112, conf: 0 };
+  const beatAt = t => (t - clock.t0)/clock.period;
+
+  /* built-in drums, so the beat is known exactly */
+  let ac = null, drumTimer = 0, nextNote = 0, step = 0;
+  function audio(){ if(!ac) ac = new AudioContext(); if(ac.state === "suspended") ac.resume(); return ac; }
+  function noise(c, dur){ const b = c.createBuffer(1, c.sampleRate*dur, c.sampleRate), d = b.getChannelData(0); for(let i = 0; i < d.length; i++) d[i] = Math.random()*2 - 1; const s = c.createBufferSource(); s.buffer = b; return s; }
+  function kick(c, t){ const o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + .12);
+    g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(.001, t + .35); o.connect(g).connect(c.destination); o.start(t); o.stop(t + .36); }
+  function snare(c, t){ const n = noise(c, .2), f = c.createBiquadFilter(), g = c.createGain(); f.type = "bandpass"; f.frequency.value = 1800;
+    g.gain.setValueAtTime(.35, t); g.gain.exponentialRampToValueAtTime(.001, t + .16); n.connect(f).connect(g).connect(c.destination); n.start(t); }
+  function hat(c, t, v){ const n = noise(c, .05), f = c.createBiquadFilter(), g = c.createGain(); f.type = "highpass"; f.frequency.value = 7000;
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + .04); n.connect(f).connect(g).connect(c.destination); n.start(t); }
+  function bass(c, t, f0){ const o = c.createOscillator(), g = c.createGain(); o.type = "triangle"; o.frequency.value = f0;
+    g.gain.setValueAtTime(.18, t); g.gain.exponentialRampToValueAtTime(.001, t + .22); o.connect(g).connect(c.destination); o.start(t); o.stop(t + .25); }
+  function startDrums(){ const c = audio(); stopDrums(); const bpm = +$("#bpm").value; clock.period = 60/bpm;
+    nextNote = c.currentTime + .1; step = 0; clock.ctx0 = nextNote; clock.t0 = T() + .1; clock.conf = 1;
+    drumTimer = setInterval(() => { const c = ac, sp = clock.period/2;
+      while(nextNote < c.currentTime + .15){ const beat = step % 8;
+        if(beat % 2 === 0) hat(c, nextNote, .12); else hat(c, nextNote, .06);
+        if(beat === 0 || beat === 5) kick(c, nextNote); if(beat === 2 || beat === 6) snare(c, nextNote);
+        if(beat === 3 || beat === 7) bass(c, nextNote, [55, 65, 49, 73][Math.floor(step/8) % 4]);
+        nextNote += sp; step++; } }, 25); }
+  function stopDrums(){ clearInterval(drumTimer); drumTimer = 0; }
+
+  /* your music through the microphone: onsets -> tempo by autocorrelation -> phase by a comb */
+  let mic = null, an = null, spec = null, prev = null, env = [], lastEst = 0;
+  async function startMic(){ const c = audio();
+    try { mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
+    catch(e){ status = "No microphone: " + e.message; return; }
+    an = c.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0; c.createMediaStreamSource(mic).connect(an);
+    spec = new Float32Array(an.frequencyBinCount); prev = null; env = []; clock.conf = 0; }
+  function stopMic(){ if(mic) mic.getTracks().forEach(t => t.stop()); mic = null; an = null; }
+  function listen(t){
+    if(!an) return; an.getFloatFrequencyData(spec);
+    const hz = ac.sampleRate/an.fftSize, lo = Math.round(30/hz), hi = Math.round(4000/hz);
+    let flux = 0; const mag = spec.map(db => Math.pow(10, db/20));
+    if(prev) for(let i = lo; i < hi; i++){ const d = mag[i] - prev[i]; if(d > 0) flux += d*(i < 200/hz ? 3 : 1); }
+    prev = mag; env.push([t, flux]); while(env.length && t - env[0][0] > 8) env.shift();
+    if(t - lastEst > .5 && env.length > 200){ lastEst = t; estimate(t); } }
+  function estimate(t){
+    /* resample the onset strength at 100 Hz, take the part above its running mean */
+    const N = 800, dt = .01, x = new Float32Array(N); let j = 0;
+    for(let k = 0; k < N; k++){ const tk = t - 8 + k*dt; while(j < env.length - 1 && env[j + 1][0] <= tk) j++; x[k] = env[j][1]; }
+    const mean = x.reduce((a, b) => a + b, 0)/N; for(let k = 0; k < N; k++) x[k] = Math.max(0, x[k] - mean);
+    let best = 0, bestLag = 0, zero = 0; for(let k = 0; k < N; k++) zero += x[k]*x[k];
+    if(zero < 1e-9){ clock.conf *= .8; return; }
+    for(let lag = 35; lag <= 86; lag++){ let s = 0; for(let k = lag; k < N; k++) s += x[k]*x[k - lag];
+      const bpm = 6000/lag, w = Math.exp(-Math.pow(Math.log2(bpm/115), 2)*1.4); s *= w;
+      if(s > best){ best = s; bestLag = lag; } }
+    const period = bestLag*dt; let bestPh = 0, bestS = -1;
+    for(let ph = 0; ph < bestLag; ph++){ let s = 0; for(let k = N - 1 - ph; k >= 0; k -= bestLag) s += x[k] + .5*(x[k - 1] || 0) + .5*(x[k + 1] || 0); if(s > bestS){ bestS = s; bestPh = ph; } }
+    const lastBeat = t - bestPh*dt, conf = Math.min(1, best/zero*2.2);
+    /* glide, don't jump: keep the running beat count, nudge period and phase */
+    if(clock.conf < .2 || Math.abs(period - clock.period) > .06){ clock.period = period; clock.t0 = lastBeat; }
+    else { clock.period += (period - clock.period)*.3; const b = beatAt(lastBeat), err = b - Math.round(b); clock.t0 += err*clock.period*.35; }
+    clock.conf += (conf - clock.conf)*.5; }
+
+  /* ---------- the dance: beats in, a look out ---------- */
+  const ease = x => x < 0 ? 0 : x > 1 ? 1 : x*x*(3 - 2*x);
+  function dance(t, who, on){
+    const madam = who === "madam";
+    const look = { l: base(), r: base(), tear: null, hop: 0, squash: 0, tilt: 0, dx: 0 };
+    function base(){ return { px: 0, py: -.1, pupil: .42, up: 0, ang: 0, closed: null, spiral: 0, spin: 0, heart: 0 }; }
+    if(mode === "off" || !on) return look;
+    const beat = mode === "groove" ? t*1.55 : beatAt(t);          /* groove: a loose ~93 bpm sway, never a hit */
+    const b = beat, ph = ((b % 1) + 1) % 1, bar = Math.floor(b/4), inBar = ((b % 4) + 4) % 4;
+    const sure = mode === "groove" ? 0 : ease((clock.conf - .25)/.4);
+    const hit = Math.exp(-ph*7)*sure;                                   /* a sharp accent right on the beat, only when sure */
+    const soft = .5 - .5*Math.cos(ph*Math.PI*2);                        /* the loose, always-safe part */
+    const set = (k, v) => { look.l[k] = v; look.r[k] = v; };
+    if(madam){
+      /* half time: one side per two beats, a small bounce down on every beat; the gaze rides along, it doesn't dart */
+      const sway = Math.sin(Math.PI*b/2);
+      look.tilt = .13*sway; look.dx = 1.6*sway;
+      look.hop = .9*hit - .5*(1 - hit)*sure*Math.min(1, ph*3) + .6*soft*(1 - sure);   /* down on the beat, back up after */
+      look.squash = .3*hit;
+      set("px", .35*sway); set("py", -.15);
+      set("pupil", .42 + .07*hit); set("up", -.05);
+      const phrase = ((bar % 8) + 8) % 8;
+      if(((phrase === 1 || phrase === 3) && inBar >= 2) || (phrase === 6 && inBar >= 1)) set("closed", "joy");   /* feeling it: three times a phrase */
+      if(phrase === 7) { set("heart", .78 + .3*hit + .08*soft); set("up", -.25); }   /* hearts that beat with the song */
+      if(phrase === 5 && inBar >= 3 && inBar < 3.5) look.r.closed = "blink";       /* a wink at you on the last beat */
+    } else {
+      look.tilt = .07*Math.sin(Math.PI*b/2);                             /* a slow, dignified sway */
+      look.dx = 1.2*Math.sin(Math.PI*b/2);
+      look.hop = 1.1*hit + .5*soft*(1 - sure);                           /* a small nod down on the beat */
+      look.squash = .14*hit;
+      set("px", .3*Math.sin(Math.PI*b/2)); set("py", -.05);
+      set("up", -.12 - .1*soft*(1 - sure) - .14*hit); set("pupil", .42 + .05*hit);   /* his usual lids, lifting a touch on the beat: awake, enjoying it */
+      const phrase = ((bar % 8) + 8) % 8;
+      if(((phrase === 1 || phrase === 3 || phrase === 5) && inBar >= 2) || phrase === 7) set("closed", "joy");   /* savouring: often, and a whole bar at the end */
+      if(phrase === 6 && inBar < 2){ look.l.up = -.45; look.l.px = .5; look.r.px = .5; }   /* one brow up: rather good, this */
+    }
+    look.beat = beat; look.who = who; look.period = mode === "groove" ? 1/1.55 : clock.period;
+    return look; }
+
+  /* a quiet note now and then: one every two beats for her, every four for him; it floats up beside them and fades.
+     Deterministic from the beat count, so the app can draw the same thing from its clock (like the z's) */
+  const NOTE_C = { madam: ["#8f80eb", "#cd6766", "#f2f1ec"], gentleman: ["#f2f1ec", "#9fb0c4", "#8f80eb"] };
+  function eighth(g, x, y, s, beamed){
+    const head = (hx, hy) => { g.save(); g.translate(hx, hy); g.rotate(-.35); g.beginPath(); g.ellipse(0, 0, s*.3, s*.21, 0, 0, Math.PI*2); g.fill(); g.restore(); };
+    g.lineWidth = s*.11; g.lineCap = "round";
+    if(!beamed){ head(x, y); g.beginPath(); g.moveTo(x + s*.27, y - s*.06); g.lineTo(x + s*.27, y - s*1.05);
+      g.quadraticCurveTo(x + s*.36, y - s*.72, x + s*.62, y - s*.58); g.stroke(); }
+    else { const w = s*.62; head(x, y); head(x + w, y - s*.12);
+      g.beginPath(); g.moveTo(x + s*.27, y - s*.06); g.lineTo(x + s*.27, y - s*1.02); g.moveTo(x + w + s*.27, y - s*.18); g.lineTo(x + w + s*.27, y - s*1.14); g.stroke();
+      g.lineWidth = s*.2; g.lineCap = "butt"; g.beginPath(); g.moveTo(x + s*.22, y - s*1.0); g.lineTo(x + w + s*.32, y - s*1.12); g.stroke(); } }
+  function notes(g, cx, cy, R0, look){
+    if(look.beat == null) return;
+    const every = look.who === "madam" ? 2 : 4, life = 1.7, cols = NOTE_C[look.who];
+    const last = Math.floor(look.beat/every);
+    for(let i = last - 3; i <= last; i++){
+      const age = (look.beat - i*every)*look.period; if(age < 0 || age > life) continue;
+      const u = age/life, side = (i & 1) ? 1 : -1, s = R0*(.62 + .18*u);
+      const x = cx + side*R0*(2.55 + .5*u) + Math.sin(u*Math.PI*2)*R0*.18 - s*.3, y = cy - R0*(.25 + 1.5*u);
+      g.save(); g.globalAlpha = .85*Math.min(1, u*6)*Math.min(1, (1 - u)*2.2);
+      g.fillStyle = g.strokeStyle = cols[((i % 3) + 3) % 3]; eighth(g, x, y, s, (i % 4) === 3); g.restore(); } }
+
+  /* ---------- drawing ---------- */
+  function fit(cv){ const b = cv.getBoundingClientRect(); const w = Math.round(b.width*D), h = Math.round(b.height*D);
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; } const g = cv.getContext("2d"); g.setTransform(D, 0, 0, D, 0, 0); g.clearRect(0, 0, b.width, b.height); return [g, b.width, b.height]; }
+  function put(g, cx, cy, R0, look){ g.save(); g.translate(cx + look.dx*R0/7.5, cy); g.rotate(look.tilt); g.translate(-cx, -cy); R.drawFace(g, cx, cy, R0, look); g.restore(); notes(g, cx, cy, R0, look); }
+  const meter = [...document.querySelectorAll("#meter i")];
+  function frame(){
+    const t = T(); listen(t);
+    /* the drums are heard later than they are scheduled (Bluetooth: up to a quarter second): pin beat 0 to when it leaves the speakers */
+    if(mode === "drums" && ac && ac.getOutputTimestamp){ const ts = ac.getOutputTimestamp();
+      if(ts.contextTime > 0 && ts.performanceTime > 0) clock.t0 = ts.performanceTime/1000 + (clock.ctx0 - ts.contextTime); }
+    const on = mode !== "off" && (mode !== "mic" || an);
+    const look = dance(t, R.who, on);
+    if(mode === "drums" || mode === "mic"){ const b = beatAt(t), k = ((Math.floor(b) % 4) + 4) % 4; meter.forEach((m, i) => m.classList.toggle("on", i === k && clock.conf > .25)); }
+    else meter.forEach(m => m.classList.remove("on"));
+    if(mode === "mic" && an) status = `hearing ${Math.round(60/clock.period)} bpm, sure ${Math.round(clock.conf*100)}%`;
+    $("#status").textContent = status;
+    let [g, w, h] = fit($("#big")); put(g, w/2, h/2 + 6, 62, look);
+    [g, w, h] = fit($("#bar")); put(g, w/2, h/2, 16/2*.94, look);
+    [g, w, h] = fit($("#zoom")); put(g, w/2, h/2, 16/2*.94*4, look);
+    requestAnimationFrame(frame); }
+
+  function setMode(m){ mode = m; stopDrums(); if(m !== "mic") stopMic(); status = "";
+    document.querySelectorAll(".mode").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+    $("#drumrow").style.display = m === "drums" ? "" : "none";
+    if(m === "drums") startDrums(); if(m === "mic") { status = "allow the microphone, then play music out loud"; startMic(); }
+    if(m === "groove") status = "a song is on, no beat known"; }
+  document.querySelectorAll(".mode").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+  const bv = () => $("#bpmv").textContent = $("#bpm").value + " bpm"; bv();
+  $("#bpm").addEventListener("input", () => { bv(); if(mode === "drums") startDrums(); });
+  setMode("groove"); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

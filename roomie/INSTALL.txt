@@ -1,4 +1,4 @@
-ROOMIE 0.8.1
+ROOMIE 0.9
 A pair of eyes that lives in your menu bar and keeps an eye on you.
 For macOS 13 or later, Apple silicon and Intel.
 
@@ -43,19 +43,35 @@ You leave the Mac alone            they doze off
 The battery runs low               sad
 The Mac runs hot                   a bead of sweat
 You say you'll walk, and stay put   narrowed eyes and one dry remark
+You put music on                   they dance
 
 On a call or watching something full screen, they keep quiet.
 For an hour of peace: right-click the eyes, Quiet for an Hour.
 For fewer nudges for good: right-click, Nudges, Only Walks and Bed,
 or None, Just Company (no nudges, just the eyes).
+No dancing: right-click, Dancing, Off.
 Right-click the eyes and choose Playground to see all of it on buttons.
 
 
 WHAT THEY READ
 
 The clock, how long since you last touched the Mac, where the pointer is,
-that a click happened (not where), the battery level, how hot the Mac runs.
+that a click happened (not where), the battery level, how hot the Mac runs,
+whether sound is coming out of the Mac, and whether Spotify or Apple Music
+is playing (and who: they may say so).
 Nothing on your screen, nothing you type. No network code at all.
+macOS asks for no permission.
+
+
+DANCING TO THE BEAT (if you want it)
+
+On their own they dance in their own way. To dance on the beat of whatever
+plays, the browser too: right-click the eyes, Dancing, To the Beat
+(macOS 14.2 or later). macOS asks once to let Roomie hear your Mac's sound.
+They keep only the last fifth of a second of it, to find the beat.
+Nothing is recorded, nothing is saved, nothing leaves your Mac.
+If no question appears: System Settings > Privacy & Security >
+Screen & System Audio Recording > System Audio Recording Only > Roomie.
 
 
 MOVING OUT
