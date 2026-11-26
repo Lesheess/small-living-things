@@ -736,7 +736,7 @@ func writePNG(_ img: CGImage, _ path: String) { let rep = NSBitmapImageRep(cgIma
 
 enum Kind { case eyes, move, late, hello }
 enum Reaction { case back, cry, dizzy, battery, hot, music }
-struct Card { var kind: Kind; var text: String; var buttons: [String] }
+struct Card { var kind: Kind; var text: String; var buttons: [String]; var acts: [String] = [] }   /* acts: what each button does (far, walk, later, night) */
 
 func clockText(_ d: Date = Date()) -> String { let f = DateFormatter(); f.dateFormat = "H:mm"; return f.string(from: d) }
 func partOfDay() -> String { let h = Calendar.current.component(.hour, from: Date()); return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening" }
@@ -746,19 +746,7 @@ enum Lines {
     let m = who == .madam
     switch k {
     case .hello: return Card(kind: k, text: m ? "Hello, darling. I'll be keeping an eye on you. Two, in fact." : "Good \(partOfDay()). I shall be keeping an eye on you. Both, in fact.", buttons: [])
-    case .eyes: return Card(kind: k, text: (m ? ["Darling, your eyes. Look at something far away for twenty seconds. I'll count.",
-                                               "Twenty minutes of screen. Find a window and look out of it for me. I'll count.",
-                                               "Look up, darling. Something far away, twenty seconds. I'll keep time.",
-                                               "Your eyes look tired. Let's find a horizon. Twenty seconds.",
-                                               "Somewhere out there is a tree. Find it with your eyes. Twenty seconds.",
-                                               "Rest them for me: far away, twenty seconds. I count, you look."]
-                                             : ["Twenty minutes, if I may. Kindly look at something twenty feet away. I shall count.",
-                                                "Your eyes have earned a rest. Twenty seconds, at a distance. I shall count.",
-                                                "Might I recommend the horizon? Twenty seconds should suffice.",
-                                                "A distant view, if you please. I shall keep the time.",
-                                                "Your eyes deserve a short holiday. Twenty seconds, somewhere far off.",
-                                                "The screen will keep. Twenty seconds on something distant, I suggest."]).randomElement()!,
-                            buttons: [m ? "Okay" : "Very well", "Later"])
+    case .eyes: return breakCard(who, walky: false)
     case .move: return Card(kind: k, text: (m ? ["Half an hour in that chair. Up you get: walk for five minutes.",
                                                "Stand up, stretch, go and fetch some water. I'll mind the screen.",
                                                "You've been sitting for ages, darling. Five minutes on your feet.",
@@ -776,6 +764,28 @@ enum Lines {
     }
   }
   /* their short replies, never the same twice in a row */
+  /* 0.9.1: one break, not two nudges that argue (a walk is a look far away too). Every 25 minutes at the screen:
+     twenty seconds far away (the timer and the chime) or a walk, your choice; after an hour in the chair it leans to the walk */
+  static func breakCard(_ who: Who, walky: Bool) -> Card {
+    let m = who == .madam
+    if walky {
+      let t = pick("breakWalk", who, ["An hour in that chair, darling. A little walk? Or twenty seconds out of the window, at least.",
+                                      "You've grown into that seat. Five minutes on your feet? Or just look far for twenty seconds.",
+                                      "Up, darling. A walk would be lovely. Twenty seconds at the window, if you must."],
+                                     ["An hour seated. A stroll would do you credit; twenty seconds at a distance, at the very least.",
+                                      "The chair has had you for an hour. A short constitutional? Or a distant view, twenty seconds.",
+                                      "Might I suggest a walk? Five minutes. Failing that, twenty seconds at the window."])
+      return Card(kind: .eyes, text: t, buttons: ["Walk", "20 seconds", "Later"], acts: ["walk", "far", "later"]) }
+    let t = pick("breakFar", who, ["Break, darling. Twenty seconds on something far away, or a little walk?",
+                                   "Your eyes need a horizon. Twenty seconds out of the window? Or stretch your legs.",
+                                   "Look up for me: something far away, twenty seconds. Or go for a walk.",
+                                   "Somewhere out there is a tree. Find it for twenty seconds, or go and visit it."],
+                                  ["A pause, if I may. Twenty seconds at a distance, or a short stroll?",
+                                   "Your eyes have earned a rest. Twenty seconds on the horizon, or a turn about the room.",
+                                   "Might I recommend the horizon? Twenty seconds will do. Or a little walk.",
+                                   "The screen will keep. Something distant for twenty seconds, or your legs, perhaps."])
+    _ = m
+    return Card(kind: .eyes, text: t, buttons: ["20 seconds", "Walk", "Later"], acts: ["far", "walk", "later"]) }
   static var lastPick: [String: String] = [:]
   static func pick(_ key: String, _ who: Who, _ madam: [String], _ gent: [String]) -> String {
     let list = who == .madam ? madam : gent, k = key + "\(who)"
@@ -818,6 +828,19 @@ enum Lines {
                                  ["Ah, \(a). Splendid choice.", "\(a). A fine tune, if I may.", "\(a)? Rather good, this."]) }
     return pick("music", who, ["Oh, I love this one.", "Ooh. Now we're dancing.", "Music! Finally, darling."],
                               ["A fine tune, if I may say so.", "Ah. Music. Splendid.", "I do enjoy this one."]) }
+  /* asked twice, put off twice: the third time they give up, with a sigh (0.9.1, his idea) */
+  static func giveUp(_ k: Kind, _ who: Who) -> String {
+    switch k {
+    case .move: return pick("giveUpMove", who, ["Fine. Lazybones.", "I give up. Grow roots, darling.", "Three times? I'm done. Lazy thing."],
+                                               ["Very well, you lazybones. I give up.", "I concede. The chair has won.", "I shan't ask again. Not this hour."])
+    case .late: return pick("giveUpLate", who, ["Fine, stay up. I'm going to bed without you.", "Suit yourself. Goodnight, owl."],
+                                               ["As you wish. I shall retire alone.", "Very well. The night is yours. I'm off."])
+    default: return pick("giveUpEyes", who, ["Fine. Squint away. I give up.", "Your eyes, your business, darling."],
+                                            ["Very well. I shall stop asking about your eyes.", "Twice declined. I know when I'm beaten."]) } }
+  /* after a long stretch of music, once it is over */
+  static func musicEnd(_ who: Who) -> String { pick("musicEnd", who,
+    ["That was a proper music therapy session, darling.", "Phew. I danced my lids off.", "Lovely. Same time tomorrow?"],
+    ["A most restorative session of music therapy.", "Splendid. My feet are tired. Figuratively.", "Thank you for the music. Most civilised."]) }
   /* "Going," you said, and you stayed: a jab, never a scolding, and no new demand */
   static func caught(_ who: Who) -> String { (who == .madam
     ? ["Going, you said. Darling, I can see you.", "Shortest walk I've ever seen.", "Lovely walk? You haven't moved an inch."]
@@ -980,6 +1003,9 @@ final class SystemEar {
       for i in 0..<frames { var s: Float = 0; for k in 0..<c { s += p[i*c + k] }; ring[w] = s/Float(c); w = (w + 1) % ring.count } }
     else { let frames = Int(b0.mDataByteSize)/4
       for i in 0..<frames { var s: Float = 0; for b in list { if let d = b.mData { s += d.assumingMemoryBound(to: Float.self)[i] } }; ring[w] = s/Float(list.count); w = (w + 1) % ring.count } } }
+  /* how loud the last n samples are (root mean square) */
+  func level(_ n: Int) -> Float { lock.lock(); defer { lock.unlock() }
+    var s: Float = 0; for k in 0..<n { let v = ring[(w - n + k + ring.count) % ring.count]; s += v*v }; return (s/Float(n)).squareRoot() }
   func latest(_ n: Int) -> [Float] { lock.lock(); defer { lock.unlock() }
     return (0..<n).map { ring[(w - n + $0 + ring.count) % ring.count] } }
 }
@@ -994,27 +1020,34 @@ final class Coach {
   let k: Double                                   /* 1 = minutes are minutes; --fast: minutes are seconds */
   var eyeT = 0.0, moveT = 0.0, lastAt = -1e9, snoozeUntil = 0.0, lateNext = 0.0
   var pending: Kind? = nil
+  /* 0.9.1: "Later" twice in a row for the same thing, and the third time they give up instead of asking (his idea) */
+  var laters: [Kind: Int] = [:]
   init(fast: Bool) { k = fast ? 1.0/60 : 1 }
-  var eyeEvery: Double { 20*60*k }; var moveEvery: Double { 30*60*k }; var gap: Double { 8*60*k }
+  var eyeEvery: Double { (mode == .fewer ? 50 : 25)*60*k }; var moveEvery: Double { 50*60*k }; var gap: Double { 15*60*k }
+  /* the break leans to a walk after this long in the chair */
+  var walky: Bool { moveT >= moveEvery }
   var lateEvery: Double { 45*60*k }; var snooze: Double { 10*60*k }; var giveUp: Double { 4*60*k }
   /* time counts while you are at the Mac; a minute away resets the eyes, five minutes away count as the walk */
   /* how much care the person wants (right-click > Nudges): all of it, only the walk and bed, or none */
   var mode = NudgeMode(rawValue: defaults.string(forKey: "nudges") ?? "") ?? .all
   func update(now: Double, dt: Double, idle: Double, hour: Double, hold: Bool = false) -> Kind? {
-    if idle < 60 { eyeT += dt; moveT += dt }
-    if idle >= 60 { eyeT = 0 }
-    if idle >= 300 { moveT = 0 }
+    /* 0.9.1: reading or watching without touching anything is still screen time (a minute of stillness used to reset the eyes,
+       so while he read they never asked); five minutes away is a real break for the eyes and the legs */
+    if idle < 300 { eyeT += dt; moveT += dt } else { eyeT = 0; moveT = 0 }
     guard !hold, mode != .none, pending == nil, now >= snoozeUntil, now - lastAt >= gap, idle < 60 else { return nil }
     var due: Kind? = nil
     if hour >= 0.5 && hour < 5 && now >= lateNext { due = .late }
-    else if moveT >= moveEvery { due = .move }
-    else if eyeT >= eyeEvery && mode == .all { due = .eyes }
+    else if eyeT >= eyeEvery { due = .eyes }
     if let d = due { pending = d; lastAt = now }
     return due
   }
-  func done(_ kind: Kind, now: Double) { pending = nil
+  func done(_ kind: Kind, now: Double) { pending = nil; laters[kind] = 0
     switch kind { case .eyes: eyeT = 0; case .move: moveT = 0; eyeT = 0; case .late: lateNext = now + lateEvery; case .hello: break } }
-  func later(now: Double) { if pending == .late { lateNext = now + 30*60*k }; pending = nil; snoozeUntil = now + snooze }
+  func later(now: Double) { if let p = pending { laters[p, default: 0] += 1 }; if pending == .late { lateNext = now + 30*60*k }; pending = nil; snoozeUntil = now + snooze }
+  var givingUp: Bool { pending.map { (laters[$0] ?? 0) >= 2 } ?? false }
+  /* they stop asking about this one for a full round; the bed for the night */
+  func giveUp(now: Double) { guard let p = pending else { return }; pending = nil; laters[p] = 0
+    switch p { case .eyes: eyeT = 0; case .move: moveT = 0; eyeT = 0; case .late: lateNext = now + 6*3600*k; case .hello: break } }
   func goodNight(now: Double) { pending = nil; lateNext = now + 6*3600*k }
 }
 
@@ -1076,7 +1109,7 @@ final class Brain {
     wasCharging = s.charging
     hot += ((s.hot ? 1 : 0) - hot)*min(1, dt*1.5)
     dizzy = max(0, min(1.7, dizzy + s.shake) - dt*(dizzy > 1 ? 0.45 : 0.22))
-    if s.rage { poke(t) }
+    if s.rage { startleUntil = max(startleUntil, t + 0.35) }          /* fast clicking somewhere: a flinch, never a poke (it made them cry) */
     let dz = sm(0.55, 0.9, dizzy), startled = t < startleUntil, wince = t < winceUntil, sad = !wince && t < cryUntil
     let heart = heartAmount(t)
     let happy = t < happyUntil && !startled && !sad && heart == 0
@@ -1172,7 +1205,7 @@ enum Phase { case hidden, hint, open, counting, message, choose, caught, say }
 struct IslandLayout { var size: CGSize; var text: CGRect = .zero; var buttons: [CGRect] = []; var faces: [CGRect] = []; var ring: CGRect = .zero; var face: CGRect = .zero }
 let CARD_W: CGFloat = 344, PAD: CGFloat = 16, FACE_W: CGFloat = 70
 
-func islandLayout(_ ph: Phase, text: String) -> IslandLayout {
+func islandLayout(_ ph: Phase, text: String, buttons nb: Int = 2) -> IslandLayout {
   switch ph {
   case .hidden: return IslandLayout(size: CGSize(width: 86, height: 0))
   case .hint: return IslandLayout(size: CGSize(width: 86, height: 26))
@@ -1191,8 +1224,8 @@ func islandLayout(_ ph: Phase, text: String) -> IslandLayout {
     var l = IslandLayout(size: CGSize(width: CARD_W, height: 18 + row + 18), text: CGRect(x: tx, y: 18 + (row - th)/2, width: tw, height: th),
                          face: CGRect(x: PAD, y: 18 + row/2 - 15, width: FACE_W - 4, height: 30))
     if ph == .open { let by = 18 + row + 14; l.size.height = by + 32 + 16
-      let bw = (CARD_W - 2*PAD - 10)/2
-      l.buttons = [CGRect(x: PAD, y: by, width: bw, height: 32), CGRect(x: PAD + bw + 10, y: by, width: bw, height: 32)] }
+      let n = max(1, nb), bw = (CARD_W - 2*PAD - 8*CGFloat(n - 1))/CGFloat(n)
+      l.buttons = (0..<n).map { CGRect(x: PAD + CGFloat($0)*(bw + 8), y: by, width: bw, height: 32) } }
     return l
   /* caught: the eyes big in the middle, the line under them */
   case .caught:
@@ -1276,7 +1309,7 @@ func paintIsland(_ g: CGContext, size: CGSize, phase ph: Phase, text: String, bu
     g.restoreGState() }
   g.addPath(outline); g.setFillColor(rgb(0, 0, 0)); g.fillPath()
   guard alpha > 0.01 else { return }
-  let L = islandLayout(ph, text: text)
+  let L = islandLayout(ph, text: text, buttons: max(2, buttons.count))
   g.saveGState(); g.setAlpha(alpha)
   if notch.width > 0 && ph == .hint {
     /* compact: the roommate's tiny face in the left ear, what it is about in the right, breathing */
@@ -1426,7 +1459,7 @@ final class Island {
     return CGPoint(x: max(6, min(Island.stage.width - W - 6, x)), y: 0)
   }
   var showing: Bool { phase != .hidden }
-  var layout: IslandLayout { islandLayout(phase, text: card?.text ?? note) }
+  var layout: IslandLayout { islandLayout(phase, text: card?.text ?? note, buttons: card?.buttons.count ?? 2) }
   var rest: CGSize { notch.width > 0 ? base : CGSize(width: 86, height: 0) }
   var target: CGSize {
     guard notch.width > 0 else { return phase == .hidden ? rest : layout.size }
@@ -1940,7 +1973,7 @@ if let i = args.firstIndex(of: "--site"), i + 1 < args.count {
     writePNG(img, dir + "/" + who.rawValue + ".png") }
   /* a nudge: the bar, the eyes glancing down at the black pill, the pill open with her line */
   let W: CGFloat = 640, BH: CGFloat = 30
-  let card = Lines.card(.eyes, .madam), L = islandLayout(.open, text: card.text)
+  let card = Lines.card(.eyes, .madam), L = islandLayout(.open, text: card.text, buttons: card.buttons.count)
   let img = bitmap(CGSize(width: W, height: BH + L.size.height + 40)) { g in
     g.setFillColor(rgb(0.086, 0.09, 0.12)); g.fill(CGRect(x: 0, y: 0, width: W, height: BH + L.size.height + 40))
     g.setFillColor(rgb(0.13, 0.135, 0.17)); g.fill(CGRect(x: 0, y: 0, width: W, height: BH))
@@ -2112,9 +2145,12 @@ if args.contains("--selftest") {
   let c = Coach(fast: false); var t = 0.0
   func run(_ label: String, minutes: Double, idle: Double = 1, hour: Double = 10, answer: (Kind) -> Void) {
     print("— \(label)"); let end = t + minutes*60
-    while t < end { t += 1; if let k = c.update(now: t, dt: 1, idle: idle, hour: hour) { print(String(format: "   %5.1f min  %@", t/60, "\(k)")); answer(k) } } }
+    while t < end { t += 1; if let k = c.update(now: t, dt: 1, idle: idle, hour: hour) {
+        if c.givingUp { print(String(format: "   %5.1f min  %@ — they give up", t/60, "\(k)")); c.giveUp(now: t); continue }
+        print(String(format: "   %5.1f min  %@", t/60, "\(k)")); answer(k) } } }
   run("working, every nudge taken", minutes: 95) { k in c.done(k, now: t) }
-  run("working, every nudge put off", minutes: 40) { _ in c.later(now: t) }
+  run("reading, touching nothing for most of each minute (still screen time)", minutes: 30, idle: 50) { k in c.done(k, now: t) }
+  run("working, every nudge put off", minutes: 70) { _ in c.later(now: t) }
   run("away for six minutes", minutes: 6, idle: 400) { _ in }
   run("back at work", minutes: 25) { k in c.done(k, now: t) }
   run("after midnight", minutes: 100, hour: 1.2) { k in if k == .late { c.later(now: t) } else { c.done(k, now: t) } }
@@ -2315,12 +2351,14 @@ final class App: NSObject, NSApplicationDelegate {
     if LOG { FileHandle.standardError.write("ear \(ok ? "listening" : "failed")\n".data(using: .utf8)!) }
     return ok }
   /* where the beat is now, if a song is on and they may dance */
+  var quietSince: Double? = nil, sessionAt: Double? = nil
   var hearing = false, clockBeat = 0.0, clockPeriod = 0.5, clockSure = 0.0, clockAt = -1e9
   func rawBeat(_ now: Double) -> (Double, Double, Double)? {
     if now < demoDanceUntil { let len = 60.0/112; return ((now - demoDanceAt)/len, 1, len) }
     guard danceMode != .off, who != nil, now - outAt < 3, !busyElsewhere else { hearing = false; return nil }
     /* a song heard in the sound: start when fairly sure, keep going until really unsure, so the dance doesn't flicker */
-    hearing = danceMode == .beat && earRunning && tracker.conf > (hearing ? 0.18 : 0.4)
+    let silent = quietSince.map { now - $0 > 0.5 } ?? false
+    hearing = danceMode == .beat && earRunning && !silent && tracker.conf > (hearing ? 0.18 : 0.4)
     guard music.playing || hearing else { return nil }
     if hearing { return (tracker.beat(now), sm(0.25, 0.65, tracker.conf), tracker.period) }
     return (now*1.55, 0, 1/1.55) }
@@ -2342,7 +2380,10 @@ final class App: NSObject, NSApplicationDelegate {
       if now - songEnd > 180 && now - lastMusicSay > 20*60 && now >= demoDanceUntil, let w = who {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in guard let s = self, s.songAt != nil else { return }
           if s.say(.music, now: CACurrentMediaTime(), text: Lines.music(w, artist: s.music.playing ? s.music.artist : nil)) { s.lastMusicSay = now } } } }
-    else if !on && songAt != nil { songAt = nil; songEnd = now } }
+    else if !on && songAt != nil { songAt = nil; songEnd = now }
+    if on && sessionAt == nil { sessionAt = now }
+    if !on, let ss = sessionAt, now - songEnd > 20 { sessionAt = nil
+      if songEnd - ss >= 8*60, let w = who { say(.music, now: now, text: Lines.musicEnd(w)) } } }
   func demoDance() { let now = CACurrentMediaTime(); demoDanceAt = now; demoDanceUntil = now + 14; wake()
     if let w = who { say(.music, now: now, text: Lines.music(w, artist: nil)) } }
 
@@ -2377,12 +2418,15 @@ final class App: NSObject, NSApplicationDelegate {
 
   // ---- talking
   func openCard() { guard let w = who, let k = coach.pending else { return }
-    island.go(.open, card: Lines.card(k, w), now: CACurrentMediaTime()) }
+    island.go(.open, card: k == .eyes ? Lines.breakCard(w, walky: coach.walky) : Lines.card(k, w), now: CACurrentMediaTime()) }
   func answer(_ i: Int) {
     guard let w = who, let c = island.card else { return }
     let now = CACurrentMediaTime()
+    let act = i < c.acts.count ? c.acts[i] : ""
     switch (c.kind, i) {
-    case (.eyes, 0): island.go(.counting, note: Lines.counting(w), now: now)
+    case _ where act == "far": island.go(.counting, note: Lines.counting(w), now: now)
+    case _ where act == "walk": coach.done(.move, now: now); island.go(.message, note: Lines.moveGo(w), now: now); cheer(now); walkAt = now
+    case _ where act == "later": coach.later(now: now); island.go(.message, note: Lines.later(w), now: now)
     case (.move, 0): coach.done(.move, now: now); island.go(.message, note: Lines.moveGo(w), now: now); cheer(now); walkAt = now
     case (.late, 0): coach.goodNight(now: now); island.go(.message, note: Lines.night(w), now: now); cheer(now)
     default: coach.later(now: now); island.go(.message, note: Lines.later(w), now: now)
@@ -2393,8 +2437,8 @@ final class App: NSObject, NSApplicationDelegate {
   /* pleased with you: stars out of the face in the card, and twinkles round the eyes in the bar */
   /* a passing remark from the notch, for the rare moments: not on calls, not in the quiet hour, never over a nudge, at most every two minutes */
   var lastSay = -1e9, lastCry = 0.0, wasDizzy = false, saidBattery = false, lastHot = -1e9, wasHot = false
-  @discardableResult func say(_ r: Reaction, now: Double, text: String? = nil) -> Bool {
-    guard let w = who, island.phase == .hidden, !quiet, now - lastSay > (playground.visible ? 3 : 120) else { return false }
+  @discardableResult func say(_ r: Reaction, now: Double, text: String? = nil, force: Bool = false) -> Bool {
+    guard let w = who, island.phase == .hidden, !quiet, force || now - lastSay > (playground.visible ? 3 : 120) else { return false }
     lastSay = now; island.go(.say, note: text ?? Lines.react(r, w), now: now); return true }
   func reactions(now: Double) {
     if brain.cameBack { say(.back, now: now) }
@@ -2437,7 +2481,7 @@ final class App: NSObject, NSApplicationDelegate {
     let qt: String = { if let u = quietUntil, Date() < u { return "Quiet until \(clockText(u))" }; return "Quiet for an Hour" }()
     /* Nudges: how much care, for good; Quiet below is just for now */
     let nm = NSMenuItem(title: "Nudges", action: nil, keyEquivalent: ""), sub = NSMenu()
-    for (title, mode) in [("All", NudgeMode.all), ("Only Walks and Bed", .fewer), ("None, Just Company", .none)] {
+    for (title, mode) in [("All", NudgeMode.all), ("Fewer Breaks", .fewer), ("None, Just Company", .none)] {
       let it = NSMenuItem(title: title, action: #selector(pickNudges(_:)), keyEquivalent: ""); it.target = self; it.representedObject = mode.rawValue
       it.state = coach.mode == mode ? .on : .off; sub.addItem(it) }
     nm.submenu = sub; m.addItem(nm)
@@ -2462,7 +2506,7 @@ final class App: NSObject, NSApplicationDelegate {
     guard let r = s.representedObject as? String, let m = NudgeMode(rawValue: r) else { return }
     coach.mode = m; defaults.set(r, forKey: "nudges")
     /* a card about something now switched off folds away */
-    if island.phase == .open, let k = island.card?.kind, m == .none || (m == .fewer && k == .eyes) { coach.later(now: CACurrentMediaTime()); island.go(.hidden, now: CACurrentMediaTime()) }
+    if island.phase == .open, island.card?.kind != .hello, m == .none { coach.later(now: CACurrentMediaTime()); island.go(.hidden, now: CACurrentMediaTime()) }
   }
   @objc func pickDance(_ s: NSMenuItem) {
     guard let r = s.representedObject as? String, let m = DanceMode(rawValue: r) else { return }
@@ -2482,7 +2526,10 @@ final class App: NSObject, NSApplicationDelegate {
 
   // ---- what they read
   func readSlow() {
-    busyElsewhere = micInUse() || frontIsFullScreen()
+    /* 0.9.1: a full-screen window keeps them quiet only when it is a film or slides (sound playing, or a player or presenter in front);
+       a full-screen browser or editor at work used to silence every nudge */
+    let showApps: Set<String> = ["com.apple.iWork.Keynote", "com.microsoft.Powerpoint", "com.apple.QuickTimePlayerX", "com.colliderli.iina", "org.videolan.vlc", "com.apple.TV", "com.firecore.infuse"]
+    busyElsewhere = micInUse() || (frontIsFullScreen() && (outputRunning() || showApps.contains(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "")))
     outLat = outputLatency()
     battery = nil
     let snap = IOPSCopyPowerSourcesInfo().takeRetainedValue()
@@ -2509,7 +2556,9 @@ final class App: NSObject, NSApplicationDelegate {
     /* the rules run on the wall clock, whatever the drawing does */
     let cdt = now - coachLast; coachLast = now
     let d = Date(), c = Calendar.current.dateComponents([.hour, .minute], from: d), hour = Double(c.hour ?? 12) + Double(c.minute ?? 0)/60
-    if who != nil && island.phase == .hidden, let due = coach.update(now: now, dt: cdt, idle: FAST ? 0 : idle, hour: hour, hold: quiet) { island.kind = due; openCard() }
+    if who != nil && island.phase == .hidden, let due = coach.update(now: now, dt: cdt, idle: FAST ? 0 : idle, hour: hour, hold: quiet) {
+      if coach.givingUp, let w = who { coach.giveUp(now: now); say(.music, now: now, text: Lines.giveUp(due, w), force: true) }
+      else { island.kind = due; openCard() } }
     /* a call starts, or a film goes full screen, while a card is out: it slips away and they ask later */
     if busyElsewhere && island.phase == .open && island.card?.kind != .hello { coach.later(now: now); island.go(.hidden, now: now) }
     /* 0.7: a nudge opens straight into its card (he found the small pill with a symbol a riddle).
@@ -2523,7 +2572,10 @@ final class App: NSObject, NSApplicationDelegate {
     if danceMode == .beat {
       let sounding = now - outAt < 15
       if sounding && !earRunning && now - earTriedAt > 30 { listen(true) } else if !sounding && earRunning { listen(false) }
-      if #available(macOS 14.2, *), now - outAt < 3, let e = ear as? SystemEar, e.running { tracker.feed(e.latest(1024), rate: e.rate, t: now + outLat) } }
+      if #available(macOS 14.2, *), now - outAt < 3, let e = ear as? SystemEar, e.running {
+        /* paused: the sound goes silent at once, even while the browser keeps its audio open; stop within half a second */
+        if e.level(2048) < 0.0006 { if quietSince == nil { quietSince = now } else if now - quietSince! > 1.5 && tracker.conf > 0 { tracker.reset() } } else { quietSince = nil }
+        tracker.feed(e.latest(1024), rate: e.rate, t: now + outLat) } }
     let bn = beatNow(now); song(bn != nil, now: now)
     if LOG && Int(now) != Int(now - 1.0/60) { FileHandle.standardError.write("ear \(earRunning ? "on" : "off") conf \(String(format: "%.2f bpm %.0f", tracker.conf, 60/tracker.period)) out \(now - outAt < 3) | dance \(bn.map { String(format: "beat %.1f sure %.2f", $0.0, $0.1) } ?? "none") amt \(String(format: "%.2f", brain.danceAmt))\n".data(using: .utf8)!) }
     let pgOn = playground.visible
@@ -2542,7 +2594,7 @@ final class App: NSObject, NSApplicationDelegate {
     reversals = reversals.filter { now - $0 < 0.9 }
     if reversals.count >= 4 && sg != 0 { s.shake = 0.07 }
     clicks = clicks.filter { now - $0 < 1.5 }
-    if clicks.count >= 6 { s.rage = true; clicks.removeAll() }
+    if clicks.count >= 8 { s.rage = true; clicks.removeAll() }
     let attend: Attend
     switch island.phase { case .hint: attend = .hint(island.since); case .open, .message, .choose, .caught: attend = .card; case .counting: attend = .far; case .hidden, .say: attend = .none }
     let look = brain.step(now: now, dt: dt, s: s, who: who ?? .madam, attend: attend), sig = signature(look)

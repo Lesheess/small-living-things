@@ -50,15 +50,14 @@ p, li, dd{ text-wrap:pretty; }
 .hero.with-stage h1{ font-size:clamp(44px, 6.2vw, 78px); }
 @media (max-width:860px){ .hero.with-stage{ grid-template-columns:1fr; } }
 .stage{ margin:0; position:relative; }
-/* 0.9: a song for the stage, and they dance */
-.play{ position:absolute; left:14px; bottom:14px; display:inline-flex; align-items:center; gap:8px; font:700 14px/1 var(--body); color:var(--text);
+/* 0.9: a song for the stage, and they dance; 0.9.1: under the stage everywhere, it covered the card's first button */
+.play{ margin-top:12px; display:flex; width:max-content; align-items:center; gap:8px; font:700 14px/1 var(--body); color:var(--text);
   background:rgba(14,15,24,.62); border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:10px 15px; cursor:pointer;
   -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); transition:background .2s, transform .15s; }
 .play b{ font-size:16px; color:#b1a6f5; }
 .play:hover{ background:rgba(14,15,24,.8); transform:translateY(-1px); }
 .play[aria-pressed="true"]{ background:var(--text); color:var(--ink); border-color:var(--text); }
 .play[aria-pressed="true"] b{ color:#6e5ecf; }
-@media (max-width:600px){ .play{ position:static; margin-top:12px; } }
 .stage canvas{ display:block; width:100%; border-radius:22px; box-shadow:0 30px 60px -30px #000; cursor:pointer; }
 .share{ display:none; font:700 15px/1 var(--body); color:var(--text); background:transparent; border:1.5px solid var(--line); border-radius:999px; padding:13px 18px; cursor:pointer; }
 .phone-note{ display:none; margin:14px 0 0; font-size:15px; color:var(--dim); }

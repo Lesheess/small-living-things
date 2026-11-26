@@ -8,13 +8,15 @@
   const g = cv.getContext("2d"), D = Math.min(2, devicePixelRatio || 1), still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const BW = 640, BH = 200;                                   /* the stage is drawn in these units, then scaled to fit */
   const LINES = {
-    madam: ["Darling, your eyes. Look at something far away for twenty seconds. I'll count.",
-            "Half an hour in that chair. Up you get: walk for five minutes.",
+    madam: ["Break, darling. Twenty seconds on something far away, or a little walk?",
+            "Up, darling. A walk would be lovely. Twenty seconds at the window, if you must.",
             "Going, you said. Darling, I can see you."],
-    gentleman: ["Twenty minutes, if I may. Kindly look at something twenty feet away. I shall count.",
-                "Might I suggest a stroll? Five minutes. I shall hold the fort.",
+    gentleman: ["A pause, if I may. Twenty seconds at a distance, or a short stroll?",
+                "Might I suggest a walk? Five minutes. Failing that, twenty seconds at the window.",
                 "A remarkably brief stroll, if I may say so."] };
-  const BUTTONS = { madam: [["Okay", "Later"], ["Going", "Later"], null], gentleman: [["Very well", "Later"], ["Going", "Later"], null] };
+  /* 0.9.1: one break card, three buttons; after a long sit it leans to the walk */
+  const BREAK = ["20 seconds", "Walk", "Later"], WALKY = ["Walk", "20 seconds", "Later"];
+  const BUTTONS = { madam: [BREAK, WALKY, null], gentleman: [BREAK, WALKY, null] };
   const T = () => performance.now()/1000;
   const ACCENT = { madam: "rgba(143,128,235,A)", gentleman: "rgba(143,166,186,A)" };
   let closedAt = -1e9;
@@ -129,11 +131,11 @@
       const ty = top + 16 + (Math.max(44, wrapped.length*20) - wrapped.length*20)/2 + 10; let wi = 0;
       wrapped.forEach((l, i) => { let wx = cx0 + 16 + 64 + 12; l.split(" ").forEach(word => { const k = Math.max(0, Math.min(1, (age - .18 - wi*.045)/.16));
         g.fillStyle = "rgba(255,255,255," + k.toFixed(3) + ")"; g.fillText(word, wx, ty + i*20); wx += g.measureText(word + " ").width; wi++; }); });
-      if(btn){ const by0 = top + 16 + Math.max(44, wrapped.length*20) + 14, bw = (CARD_W - 32 - 10)/2;
+      if(btn){ const by0 = top + 16 + Math.max(44, wrapped.length*20) + 14, gap = 8, bw = (CARD_W - 32 - gap*(btn.length - 1))/btn.length;
         btn.forEach((label, i) => { const ba = Math.max(0, Math.min(1, (age - .4 - i*.07)/.22)), by = by0 + (1 - ba)*6; g.globalAlpha = alpha*ba;
-          roundRect(cx0 + 16 + i*(bw + 10), by, bw, 32, 16); g.fillStyle = i ? "#2b2d33" : "#fff"; g.fill();
+          roundRect(cx0 + 16 + i*(bw + gap), by, bw, 32, 16); g.fillStyle = i ? "#2b2d33" : "#fff"; g.fill();
           g.fillStyle = i ? "#fff" : "#000"; g.font = "700 14px 'Golos Text', -apple-system, sans-serif"; g.textAlign = "center";
-          g.fillText(label, cx0 + 16 + i*(bw + 10) + bw/2, by + 16); g.textAlign = "left"; }); }
+          g.fillText(label, cx0 + 16 + i*(bw + gap) + bw/2, by + 16); g.textAlign = "left"; }); }
       g.restore(); }
     /* their face pops into the card as it opens: they have just left the bar */
     if(open){ const fs = pop(age - .1), cx0 = BW/2 - CARD_W/2, fy = NOTCH.h + 16 + Math.max(44, wrapped.length*20)/2, fx = cx0 + 16 + 32;

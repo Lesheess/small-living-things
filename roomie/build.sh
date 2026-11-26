@@ -7,8 +7,12 @@ rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS"
 # one binary for Apple silicon and Intel, from macOS 13 up
 TMP="$(mktemp -d)"
 for ARCH in arm64 x86_64; do
-  swiftc -O -swift-version 5 -target $ARCH-apple-macos13.0 main.swift -o "$TMP/Roomie-$ARCH" -framework AppKit -framework IOKit -framework ServiceManagement
+  # CoreAudio weak: CATapDescription is macOS 14.2+, and Swift links its class strongly,
+  # so without this the app dies at launch on macOS 13 to 14.1 (Symbol not found)
+  swiftc -O -swift-version 5 -target $ARCH-apple-macos13.0 main.swift -o "$TMP/Roomie-$ARCH" -framework AppKit -framework IOKit -framework ServiceManagement -Xlinker -weak_framework -Xlinker CoreAudio
 done
+# nothing newer than macOS 13 may be linked strongly
+if nm -m "$TMP/Roomie-arm64" | grep -v weak | grep -q 'OBJC_CLASS_\$_CATap'; then echo "CATapDescription linked strongly"; exit 1; fi
 lipo -create "$TMP/Roomie-arm64" "$TMP/Roomie-x86_64" -output "$APP/Contents/MacOS/Roomie"
 # the icon is drawn by the app itself, then cut to the sizes macOS wants
 mkdir -p "$APP/Contents/Resources"
@@ -28,8 +32,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>Roomie</string>
   <key>CFBundleIconFile</key><string>Roomie</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.9</string>
-  <key>CFBundleVersion</key><string>8</string>
+  <key>CFBundleShortVersionString</key><string>0.9.1</string>
+  <key>CFBundleVersion</key><string>9</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSAudioCaptureUsageDescription</key><string>Roomie listens to the sound your Mac plays only to find the beat and dance to it. Nothing is recorded or sent anywhere.</string>

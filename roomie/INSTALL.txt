@@ -1,4 +1,4 @@
-ROOMIE 0.9
+ROOMIE 0.9.1
 A pair of eyes that lives in your menu bar and keeps an eye on you.
 For macOS 13 or later, Apple silicon and Intel.
 
@@ -29,12 +29,14 @@ Right-click the eyes and choose Open at Login.
 
 WHAT THEY DO
 
-Every 20 minutes at the screen     look at something far away for 20 seconds; a chime at the end
-Every 30 minutes in the chair      a five-minute walk
+Every 25 minutes at the screen     a break: 20 seconds on something far away
+                                   (they count, a chime at the end), or a short walk
+After a long sit                   they lean to the walk
 Past half past midnight            bed
 
 They hop out of the menu bar into the notch, and a black card opens
 with their line. Let it be and it slips away; they ask again later.
+Put it off twice, and the third time they give up, with a sigh.
 
 You come back after a while        hearts in their eyes
 You poke them                      they squash; the third time, they cry down your screen
@@ -47,8 +49,8 @@ You put music on                   they dance
 
 On a call or watching something full screen, they keep quiet.
 For an hour of peace: right-click the eyes, Quiet for an Hour.
-For fewer nudges for good: right-click, Nudges, Only Walks and Bed,
-or None, Just Company (no nudges, just the eyes).
+For fewer breaks for good: right-click, Nudges, Fewer Breaks
+(every 50 minutes), or None, Just Company (no nudges, just the eyes).
 No dancing: right-click, Dancing, Off.
 Right-click the eyes and choose Playground to see all of it on buttons.
 
