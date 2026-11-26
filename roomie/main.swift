@@ -659,7 +659,7 @@ enum Kind { case eyes, move, late, hello }
 enum Reaction { case back, cry, dizzy, battery, hot }
 struct Card { var kind: Kind; var text: String; var buttons: [String] }
 
-func clock(_ d: Date = Date()) -> String { let f = DateFormatter(); f.dateFormat = "H:mm"; return f.string(from: d) }
+func clockText(_ d: Date = Date()) -> String { let f = DateFormatter(); f.dateFormat = "H:mm"; return f.string(from: d) }
 func partOfDay() -> String { let h = Calendar.current.component(.hour, from: Date()); return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening" }
 
 enum Lines {
@@ -691,8 +691,8 @@ enum Lines {
                                                 "A five-minute turn about the room would be most agreeable.",
                                                 "Legs, I'm told, are meant for use. Five minutes?"]).randomElement()!,
                             buttons: ["Going", "Later"])
-    case .late: return Card(kind: k, text: (m ? ["It's \(clock()), darling. Bed.", "\(clock()). Even I'm closing my eyes. Bed?", "Darling, it's \(clock()). Tomorrow will thank you."]
-                                             : ["It is \(clock()). Might I suggest bed?", "\(clock()), and still at it. Bed would be wise.", "It is \(clock()). The day is quite over, I assure you."]).randomElement()!,
+    case .late: return Card(kind: k, text: (m ? ["It's \(clockText()), darling. Bed.", "\(clockText()). Even I'm closing my eyes. Bed?", "Darling, it's \(clockText()). Tomorrow will thank you."]
+                                             : ["It is \(clockText()). Might I suggest bed?", "\(clockText()), and still at it. Bed would be wise.", "It is \(clockText()). The day is quite over, I assure you."]).randomElement()!,
                             buttons: ["Good night", "Not yet"])
     }
   }
@@ -1609,7 +1609,8 @@ if let i = args.firstIndex(of: "--island"), i + 1 < args.count {
   let notch = CGSize(width: 185, height: 32), W: CGFloat = 520
   let card = Lines.card(.eyes, .madam)
   let rows: [(Phase, String, [String], Kind?)] = [(.hint, "", [], .eyes), (.open, card.text, card.buttons, nil),
-                                                  (.counting, Lines.counting(.madam), [], nil), (.message, Lines.eyesDone(.madam), [], nil), (.choose, "", [], nil)]
+                                                  (.counting, Lines.counting(.madam), [], nil), (.message, Lines.eyesDone(.madam), [], nil), (.choose, "", [], nil),
+                                                  { let c = Lines.card(.late, .gentleman); return (.open, c.text, c.buttons, nil) }()]
   let rowH: CGFloat = 230
   let img = bitmap(CGSize(width: W, height: rowH*CGFloat(rows.count))) { g in
     for (k, r) in rows.enumerated() {
@@ -1974,7 +1975,7 @@ final class App: NSObject, NSApplicationDelegate {
       let it = NSMenuItem(title: title, action: #selector(pick(_:)), keyEquivalent: ""); it.target = self; it.representedObject = w.rawValue
       it.state = who == w ? .on : .off; m.addItem(it) }
     m.addItem(.separator())
-    let qt: String = { if let u = quietUntil, Date() < u { return "Quiet until \(clock(u))" }; return "Quiet for an Hour" }()
+    let qt: String = { if let u = quietUntil, Date() < u { return "Quiet until \(clockText(u))" }; return "Quiet for an Hour" }()
     /* Nudges: how much care, for good; Quiet below is just for now */
     let nm = NSMenuItem(title: "Nudges", action: nil, keyEquivalent: ""), sub = NSMenu()
     for (title, mode) in [("All", NudgeMode.all), ("Only Walks and Bed", .fewer), ("None, Just Company", .none)] {

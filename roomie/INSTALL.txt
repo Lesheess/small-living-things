@@ -1,4 +1,4 @@
-ROOMIE 0.8
+ROOMIE 0.8.1
 A pair of eyes that lives in your menu bar and keeps an eye on you.
 For macOS 13 or later, Apple silicon and Intel.
 
