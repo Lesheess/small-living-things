@@ -1582,6 +1582,141 @@ if let i = args.firstIndex(of: "--og"), i + 1 < args.count {
     drawText(g, attributed("Madam or the Gentleman. Free, for your Mac.", 28, .semibold, NSColor(white: 1, alpha: 0.7), center: true), in: CGRect(x: 0, y: 500, width: W, height: 40)) }
   writePNG(img, args[i + 1]); exit(0)
 }
+if let i = args.firstIndex(of: "--dancefilm"), i + 1 < args.count {
+  /* a vertical film for Reels: the menu bar, a song starts, they dance, the camera comes close, an end card.
+     The music is made here too, at 112 bpm, so every hit lands on its beat. Usage: Roomie --dancefilm out.mp4 [madam|gentleman] */
+  let who: Who = args.count > i + 2 && args[i + 2] == "gentleman" ? .gentleman : .madam
+  let PW = 1080, PH = 1920, FPS = 30.0, S: CGFloat = 2.5, SW = CGFloat(PW)/S, FH = CGFloat(PH)/S
+  let Y0: CGFloat = (FH*0.2).rounded(), SH = FH - Y0
+  let notch = CGSize(width: 208, height: 37.5), NX = SW/2, HOME = CGPoint(x: NX + 104 + 34, y: notch.height/2)
+  let BPM = 112.0, P = 60/BPM, tm0 = 0.75, startBeat = 8.0, lastBeat = 31.6, tEnd = tm0 + (lastBeat - startBeat)*P, DUR = tEnd + 3.2
+  func e3(_ u: Double) -> CGFloat { let k = max(0, min(1, u)); return CGFloat(k < 0.5 ? 4*k*k*k : 1 - pow(-2*k + 2, 3)/2) }
+  func popIn(_ u: Double) -> CGFloat { u <= 0 ? 0 : u >= 0.6 ? 1 : CGFloat(1 - exp(-9*u)*cos(12*u)) }
+  let base = FileManager.default.temporaryDirectory.appendingPathComponent("roomie-dancefilm-\(getpid())")
+  try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+  let vURL = base.appendingPathComponent("v.mp4"), aURL = base.appendingPathComponent("a.caf"), out = URL(fileURLWithPath: args[i + 1])
+
+  /* ---- the music: four on the floor, a clap on 2 and 4, hats, a disco bass, chord stabs, and a little hook in A minor ---- */
+  let SR = 44100.0, total = Int(DUR*SR); var ML = [Float](repeating: 0, count: total), MR = ML
+  var seed: UInt64 = 0x9e3779b97f4a7c15
+  func rnd() -> Double { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Double(seed >> 11)/Double(1 << 53)*2 - 1 }
+  func put(_ t0: Double, _ dur: Double, pan: Double = 0, _ f: (Double) -> Double) {
+    let i0 = Int(t0*SR), n = Int(dur*SR), gl = Float(1 - max(0, pan)), gr = Float(1 + min(0, pan))
+    for k in 0..<n { let j = i0 + k; if j < 0 || j >= total { continue }; let v = Float(f(Double(k)/SR)); ML[j] += v*gl; MR[j] += v*gr } }
+  func kick(_ t: Double) { put(t, 0.42) { u in 0.95*exp(-u*8)*sin(2*Double.pi*(46*u + 120/30*(1 - exp(-30*u)))) } }
+  func clap(_ t: Double) { var hp = 0.0, prev = 0.0
+    put(t, 0.22) { u in let x = rnd(); hp = 0.85*(hp + x - prev); prev = x
+      let env = exp(-u*22) + 0.5*(u < 0.012 ? 1 : 0) + 0.35*(u > 0.018 && u < 0.03 ? 1 : 0); return 0.42*hp*env + 0.12*sin(2*Double.pi*190*u)*exp(-u*30) } }
+  func hat(_ t: Double, open: Bool, pan: Double) { var hp = 0.0, prev = 0.0
+    put(t, open ? 0.25 : 0.05, pan: pan) { u in let x = rnd(); hp = 0.6*(hp + x - prev); prev = x; return (open ? 0.13 : 0.08)*hp*exp(-u*(open ? 11 : 70)) } }
+  func tone(_ t: Double, _ f0: Double, _ dur: Double, _ amp: Double, harm: Int, decay: Double, bright: Double, pan: Double = 0, vib: Double = 0) {
+    put(t, dur, pan: pan) { u in var v = 0.0
+      let att = min(1, u/0.006), rel = min(1, (dur - u)/0.03), f = f0*(1 + vib*0.006*sin(2*Double.pi*5.5*u))
+      for h in 1...harm { v += sin(2*Double.pi*f*Double(h)*u)/Double(h)*exp(-u*bright*Double(h - 1)) }
+      return amp*v*exp(-u*decay)*att*rel } }
+  let roots = [55.0, 43.65, 65.41, 49.0]                                       /* Am F C G */
+  let chords = [[220.0, 261.63, 329.63], [174.61, 220.0, 261.63], [261.63, 329.63, 392.0], [196.0, 246.94, 293.66]]
+  /* the hook, in eighths over four bars (0 = rest): A minor pentatonic */
+  let hook: [[Double]] = [[659.3, 0, 523.3, 587.3, 659.3, 0, 784.0, 659.3], [587.3, 0, 523.3, 440.0, 523.3, 0, 0, 0],
+                          [659.3, 0, 523.3, 587.3, 659.3, 0, 784.0, 880.0], [784.0, 0, 659.3, 0, 587.3, 0, 523.3, 0]]
+  let beats = Int((DUR - tm0)/P) + 1
+  for k in 0..<beats {
+    let t = tm0 + Double(k)*P, bar = k/4, inBar = k % 4, ch = bar % 4
+    if t > DUR - 0.6 { break }
+    kick(t); if inBar == 1 || inBar == 3 { clap(t) }
+    hat(t + P/2, open: true, pan: 0.25); hat(t, open: false, pan: -0.2); hat(t + P/4, open: false, pan: -0.2); hat(t + 3*P/4, open: false, pan: -0.2)
+    /* disco bass: root on the beat, octave on the "and" */
+    tone(t, roots[ch], P*0.45, 0.32, harm: 6, decay: 5, bright: 0.9); tone(t + P/2, roots[ch]*2, P*0.4, 0.26, harm: 5, decay: 6, bright: 1.1)
+    if inBar == 1 || inBar == 3 { for (n, f) in chords[ch].enumerated() { tone(t + P/2, f, 0.34, 0.07, harm: 5, decay: 7, bright: 1.6, pan: Double(n - 1)*0.4) } }
+    if bar >= 2 { let line = hook[(bar - 2) % 4]
+      for e in 0..<2 { let f = line[inBar*2 + e]; if f > 0 { tone(t + Double(e)*P/2, f, P*0.48, 0.09, harm: 3, decay: 3, bright: 0.8, pan: 0.1, vib: 1) } } }
+  }
+  /* fade out, then a soft limiter */
+  let fadeAt = DUR - 1.4
+  for j in 0..<total { let t = Double(j)/SR, g = Float(t > fadeAt ? max(0, 1 - (t - fadeAt)/1.2) : 1)
+    ML[j] = tanhf(ML[j]*0.9)*0.88*g; MR[j] = tanhf(MR[j]*0.9)*0.88*g }
+  let fmt = AVAudioFormat(standardFormatWithSampleRate: SR, channels: 2)!, buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(total))!
+  buf.frameLength = AVAudioFrameCount(total)
+  for j in 0..<total { buf.floatChannelData![0][j] = ML[j]; buf.floatChannelData![1][j] = MR[j] }
+  try? FileManager.default.removeItem(at: aURL)
+  do { let af = try AVAudioFile(forWriting: aURL, settings: fmt.settings); try af.write(from: buf) } catch { print("audio:", error); exit(1) }
+
+  /* ---- the pictures ---- */
+  try? FileManager.default.removeItem(at: vURL)
+  let writer = try! AVAssetWriter(outputURL: vURL, fileType: .mp4)
+  let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: PW, AVVideoHeightKey: PH,
+    AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 12_000_000, AVVideoMaxKeyFrameIntervalKey: 30, AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel]])
+  input.expectsMediaDataInRealTime = false
+  let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+    kCVPixelBufferWidthKey as String: PW, kCVPixelBufferHeightKey as String: PH])
+  writer.add(input); guard writer.startWriting() else { print("could not start writing:", String(describing: writer.error)); exit(1) }
+  writer.startSession(atSourceTime: .zero)
+  let frames = Int(DUR*FPS), zoomFrom = 1.7, zoomTo = 3.4, Z: CGFloat = 8.2, C = CGPoint(x: SW/2, y: SH*0.46)
+  for f in 0..<frames {
+    let t = Double(f)/FPS
+    /* the look: idle with a blink, a little start when the song begins, then the dance fading in over a beat */
+    var look = FaceLook(); look.l.px = 0.15; look.r.px = 0.15; look.l.py = 0.12; look.r.py = 0.12
+    if t > 0.35 && t < 0.48 { look.l.closed = .blink; look.r.closed = .blink }
+    let su = t - tm0
+    if su >= 0 && su < 0.3 { look.l.scale = 1.05; look.r.scale = 1.05; look.l.pupil = 0.26; look.r.pupil = 0.26; look.hop = -CGFloat(sin(su/0.3*Double.pi))*2 }
+    if su >= 0.15 { let amt = Double(min(1, (su - 0.15)/(P*1.2))); applyDance(&look, beat: startBeat + su/P, sure: 1, period: P, who: who, amt: amt) }
+    while !input.isReadyForMoreMediaData { usleep(2000) }
+    var pbo: CVPixelBuffer?
+    if let pool = adaptor.pixelBufferPool { CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pbo) }
+    else { CVPixelBufferCreate(nil, PW, PH, kCVPixelFormatType_32BGRA, [kCVPixelBufferCGImageCompatibilityKey: true, kCVPixelBufferCGBitmapContextCompatibilityKey: true] as CFDictionary, &pbo) }
+    guard let pb = pbo else { print("no pixel buffer at frame", f); exit(1) }
+    CVPixelBufferLockBaseAddress(pb, [])
+    let g = CGContext(data: CVPixelBufferGetBaseAddress(pb), width: PW, height: PH, bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(pb),
+                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
+    g.translateBy(x: 0, y: CGFloat(PH)); g.scaleBy(x: S, y: -S)
+    g.setFillColor(rgb(0.02, 0.02, 0.025)); g.fill(CGRect(x: 0, y: 0, width: SW, height: FH))
+    /* the bezel carries one line while the song starts */
+    if t < 3.4 { let a = CGFloat(min(1, t/0.3, (3.4 - t)/0.4))
+      drawText(g, attributed("Put a song on.", 30, .heavy, NSColor(white: 1, alpha: 0.92*a), center: true), in: CGRect(x: 0, y: Y0*0.5 - 20, width: SW, height: 44)) }
+    g.saveGState(); g.translateBy(x: 0, y: Y0); g.clip(to: CGRect(x: 0, y: 0, width: SW, height: SH))
+    /* the camera: from the whole bar to their face, centred */
+    let k = e3((t - zoomFrom)/(zoomTo - zoomFrom)), z = 1 + (Z - 1)*k
+    let cx = HOME.x + (C.x - HOME.x)*k, cy = HOME.y + (C.y - HOME.y)*k
+    g.translateBy(x: cx, y: cy); g.scaleBy(x: z, y: z); g.translateBy(x: -HOME.x, y: -HOME.y)
+    linearL(g, [hex("#2a2f55"), hex("#151726")], [0, 1], from: CGPoint(x: 0, y: -SH), to: CGPoint(x: 0, y: SH*1.5))
+    radial(g, [rgb(0.47, 0.39, 0.9, 0.35), rgb(0.47, 0.39, 0.9, 0)], [0, 1], from: CGPoint(x: SW*0.72, y: SH), 10, to: CGPoint(x: SW*0.72, y: SH), SW*0.6)
+    g.setFillColor(rgb(0.055, 0.06, 0.095, 0.55)); g.fill(CGRect(x: -SW, y: 0, width: SW*3, height: notch.height))
+    g.setFillColor(rgb(0, 0, 0)); g.addPath(CGPath(roundedRect: CGRect(x: NX - notch.width/2, y: -12, width: notch.width, height: notch.height + 12), cornerWidth: 12, cornerHeight: 12, transform: nil)); g.fillPath()
+    drawText(g, attributed("Finder", 14, .bold, NSColor(white: 1, alpha: 0.86)), in: CGRect(x: 22, y: 9, width: 80, height: 20))
+    let bx = SW - 34
+    g.setStrokeColor(rgb(1, 1, 1, 0.8)); g.setLineWidth(1.4); g.stroke(CGRect(x: bx, y: notch.height/2 - 5, width: 20, height: 10))
+    g.setFillColor(rgb(1, 1, 1, 0.8)); g.fill(CGRect(x: bx + 2, y: notch.height/2 - 3, width: 12, height: 6))
+    let eh: CGFloat = 16, fw = eh*2.22
+    drawFace(g, in: CGRect(x: HOME.x - fw/2, y: HOME.y - eh/2, width: fw, height: eh), look: look, who: who, ink: rgb(1, 1, 1), dark: true)
+    g.restoreGState()
+    /* the end card, the dance going on above the words */
+    if t > tEnd { let a = CGFloat(min(1, (t - tEnd)/0.5))
+      g.setFillColor(rgb(0.055, 0.06, 0.08, a)); g.fill(CGRect(x: 0, y: 0, width: SW, height: FH))
+      g.saveGState(); g.setAlpha(a); let pop = popIn(t - tEnd - 0.05), ec = CGPoint(x: SW/2, y: FH*0.36)
+      g.translateBy(x: ec.x, y: ec.y); g.scaleBy(x: pop, y: pop); g.translateBy(x: -ec.x, y: -ec.y)
+      drawFace(g, in: CGRect(x: ec.x - 90, y: ec.y - 40, width: 180, height: 80), look: look, who: who, ink: rgb(1, 1, 1), dark: true); g.restoreGState()
+      drawText(g, attributed("Roomie dances\nwhen you play music.", 32, .heavy, NSColor(white: 1, alpha: a), center: true), in: CGRect(x: 0, y: FH*0.5, width: SW, height: 90))
+      drawText(g, attributed("Free for Mac\nlesheess.github.io/small-living-things", 15, .semibold, NSColor(white: 1, alpha: 0.7*a), center: true), in: CGRect(x: 0, y: FH*0.5 + 100, width: SW, height: 44)) }
+    CVPixelBufferUnlockBaseAddress(pb, [])
+    if !adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(f), timescale: CMTimeScale(FPS))) { print("append failed at frame", f, String(describing: writer.error)); break }
+  }
+  input.markAsFinished(); let sem = DispatchSemaphore(value: 0); writer.finishWriting { sem.signal() }; sem.wait()
+  guard writer.status == .completed else { print("video:", String(describing: writer.error)); exit(1) }
+
+  /* ---- pictures and music together ---- */
+  let comp = AVMutableComposition(), va = AVURLAsset(url: vURL), aa = AVURLAsset(url: aURL)
+  let range = CMTimeRange(start: .zero, duration: CMTime(seconds: DUR, preferredTimescale: 600))
+  guard let vt = va.tracks(withMediaType: .video).first, let at = aa.tracks(withMediaType: .audio).first,
+        let cv = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+        let ca = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { print("no tracks"); exit(1) }
+  try! cv.insertTimeRange(range, of: vt, at: .zero); try! ca.insertTimeRange(range, of: at, at: .zero)
+  try? FileManager.default.removeItem(at: out)
+  let ex = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetHighestQuality)!
+  ex.outputURL = out; ex.outputFileType = .mp4
+  let s2 = DispatchSemaphore(value: 0); ex.exportAsynchronously { s2.signal() }; s2.wait()
+  try? FileManager.default.removeItem(at: base)
+  print("wrote", args[i + 1], ex.status == .completed ? "" : "\(String(describing: ex.error))"); exit(0)
+}
 if let i = args.firstIndex(of: "--video"), i + 1 < args.count {
   /* the film for the launch, drawn by the app itself frame by frame: a close-up of a MacBook's menu bar, the walk nudge
      teleporting out of the bar into the notch, "Going" clicked, two minutes later the roommate catches you, and an end card.
