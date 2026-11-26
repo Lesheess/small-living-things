@@ -180,7 +180,9 @@
     shared.look = look; const cs = face(w, h, window.RoomieDance ? window.RoomieDance.apply(look, who) : look);
     /* the tears that fall out of the bar and down the page */
     if(crying && !still && t - dropAt > 1){ dropAt = t; dropLeft = !dropLeft; bits.push({ k:0, x:b.left + cs[dropLeft ? 0 : 1][0], y:b.bottom + 2, vy:30, age:0, s:4.5 }); }
+    /* the screen-sized layer for tears is touched only while something falls: clearing it every frame kept the GPU busy */
     const W = innerWidth, H = innerHeight;
+    if(bits.length){
     if(rain.width !== Math.round(W*D) || rain.height !== Math.round(H*D)){ rain.width = Math.round(W*D); rain.height = Math.round(H*D); }
     rg.setTransform(D, 0, 0, D, 0, 0); rg.clearRect(0, 0, W, H);
     for(let j = bits.length - 1; j >= 0; j--){ const q = bits[j]; q.age += dt;
@@ -189,6 +191,7 @@
         drop(rg, q.x, q.y, q.s, TEAR, 1); }
       else { q.vy += 1100*dt; q.x += q.vx*dt; q.y += q.vy*dt; if(q.age >= q.life){ bits.splice(j, 1); continue; }
         drop(rg, q.x, q.y, q.s, TEAR, Math.max(0, Math.min(1, (q.life - q.age)/.35))); } }
+    }
     requestAnimationFrame(frame);
   }
   /* the stage (stage.js) draws the same roommate, bigger, from the same feelings */

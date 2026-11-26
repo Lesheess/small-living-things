@@ -57,7 +57,11 @@
     return Object.assign({}, base, { l: eye(base.l), r: eye(base.r) });
   }
 
+  /* off screen, or the tab hidden: no drawing at all */
+  let visible = true;
+  if("IntersectionObserver" in window) new IntersectionObserver(es => { visible = es[es.length - 1].isIntersecting; }).observe(cv);
   function frame(){
+    if(!visible || document.hidden){ frame.last = 0; requestAnimationFrame(frame); return; }
     const t = T(), b = cv.getBoundingClientRect(), W = b.width, H = W*BH/BW;
     if(Math.abs(cv.height/D - H) > .5 || cv.width !== Math.round(W*D)){ cv.width = Math.round(W*D); cv.height = Math.round(H*D); cv.style.height = H + "px"; }
     scale = W/BW;
